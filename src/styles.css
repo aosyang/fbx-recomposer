@@ -738,8 +738,8 @@ button {
 
 .import-dialog {
   display: grid;
-  width: min(680px, 100%);
-  max-height: min(720px, calc(100vh - 40px));
+  width: min(520px, 100%);
+  max-height: min(680px, calc(100vh - 40px));
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid #3a4046;
@@ -782,24 +782,14 @@ button {
   scrollbar-width: thin;
 }
 
-.import-rule {
-  padding: 10px 12px;
-  margin: 0 0 14px;
-  border: 1px solid #3b4147;
-  border-radius: 8px;
-  color: #aeb6bd;
-  background: #202429;
-  font-size: 12px;
-}
-
 .clip-field {
   display: grid;
-  margin-bottom: 14px;
-  grid-template-columns: 110px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
+  margin-bottom: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
   color: #9ca4ab;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 620;
 }
 
 .clip-field select {
@@ -813,41 +803,126 @@ button {
   font: inherit;
 }
 
-.import-stats {
-  display: grid;
-  margin-bottom: 14px;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.import-stats > div {
+.import-summary {
   display: flex;
-  min-height: 52px;
-  padding: 9px 12px;
-  flex-direction: column;
-  justify-content: center;
-  border: 1px solid #343a40;
+  min-height: 54px;
+  padding: 11px 12px;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid;
   border-radius: 8px;
-  background: #202429;
 }
 
-.import-stats strong {
-  color: #f3f5f6;
-  font-size: 18px;
+.import-summary.is-ready {
+  border-color: rgba(126, 242, 154, 0.3);
+  background: rgba(72, 145, 89, 0.1);
 }
 
-.import-stats span {
-  color: #899199;
+.import-summary.is-warning {
+  border-color: rgba(231, 166, 90, 0.36);
+  background: rgba(170, 102, 36, 0.1);
+}
+
+.import-summary-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.import-summary.is-ready .import-summary-icon {
+  color: #102017;
+  background: #7ef29a;
+}
+
+.import-summary.is-warning .import-summary-icon {
+  color: #21170d;
+  background: #e7a65a;
+}
+
+.import-summary > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.import-summary strong {
+  color: #eef1f2;
+  font-size: 13px;
+}
+
+.import-summary > div > span {
+  color: #9da5ac;
   font-size: 10px;
 }
 
-.import-bone-columns {
+.import-rule-compact {
+  position: relative;
+  display: flex;
+  padding: 10px 2px 8px;
+  gap: 6px;
+  align-items: center;
+  color: #858e96;
+  font-size: 10px;
+}
+
+.import-info {
+  color: #aeb6bd;
+  cursor: help;
+  font-size: 12px;
+}
+
+.import-tooltip {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: auto;
+  padding: 8px 10px;
+  border: 1px solid #41484f;
+  border-radius: 7px;
+  color: #cbd1d5;
+  background: #252a2f;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  font-size: 10px;
+  font-weight: 450;
+  line-height: 1.45;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 100ms ease, visibility 100ms ease;
+}
+
+.import-info:hover .import-tooltip,
+.import-info:focus-visible .import-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.import-info:focus-visible {
+  border-radius: 50%;
+  outline: 1px solid #7ef29a;
+  outline-offset: 2px;
+}
+
+.mapping-issues,
+.mapping-details {
   display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
-.import-bone-columns > div {
+.mapping-issues {
+  margin: 2px 0 10px;
+}
+
+.mapping-issues section,
+.mapping-details section {
   min-width: 0;
   overflow: hidden;
   border: 1px solid #343a40;
@@ -855,16 +930,36 @@ button {
   background: #14171a;
 }
 
-.import-bone-columns h3 {
-  padding: 9px 10px;
+.mapping-issues h3,
+.mapping-details h3 {
+  display: flex;
+  padding: 8px 10px;
   margin: 0;
+  align-items: center;
+  justify-content: space-between;
   border-bottom: 1px solid #30353a;
   color: #cbd0d4;
-  font-size: 11px;
+  font-size: 10px;
 }
 
-.import-bone-columns ul {
-  max-height: 250px;
+.mapping-issues h3 span,
+.mapping-details h3 span {
+  color: #89929a;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.mapping-issues p,
+.mapping-details p {
+  padding: 7px 10px 0;
+  margin: 0;
+  color: #858e96;
+  font-size: 9px;
+}
+
+.mapping-issues ul,
+.mapping-details ul {
+  max-height: 160px;
   padding: 5px;
   margin: 0;
   overflow: auto;
@@ -872,39 +967,60 @@ button {
   scrollbar-width: thin;
 }
 
-.import-bone-columns li {
-  position: relative;
-  min-height: 25px;
-  padding: 5px 7px 5px 20px;
+.mapping-issues li,
+.mapping-details li {
+  min-height: 24px;
+  padding: 5px 7px;
   overflow: hidden;
   border-radius: 5px;
   color: #b9c0c6;
-  font-size: 11px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.import-bone-columns li::before {
-  position: absolute;
-  top: 10px;
-  left: 8px;
-  width: 5px;
-  height: 5px;
-  transform: rotate(45deg);
-  border: 1px solid currentColor;
-  content: "";
+.mapping-issues li {
+  color: #d5b183;
 }
 
-.import-bone-columns .is-matched::before {
-  color: #7ef29a;
+.mapping-details-toggle {
+  display: grid;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 9px;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid #343a40;
+  border-radius: 7px;
+  color: #b9c0c6;
+  background: #202429;
+  cursor: pointer;
+  font-size: 10px;
+  text-align: left;
 }
 
-.import-bone-columns .is-unmatched {
-  color: #858d95;
+.mapping-details-toggle:hover {
+  border-color: #485159;
+  color: #fff;
+  background: #252a2f;
 }
 
-.import-bone-columns .is-unmatched::before {
-  color: #e7a65a;
+.mapping-details-chevron {
+  display: grid;
+  place-items: center;
+  color: #7f8890;
+  font-size: 15px;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+
+.mapping-details-toggle.is-open .mapping-details-chevron {
+  transform: rotate(90deg);
+}
+
+.mapping-details {
+  padding-top: 8px;
 }
 
 .import-error {
@@ -1001,9 +1117,5 @@ button {
 
   .import-dialog {
     max-height: calc(100vh - 20px);
-  }
-
-  .import-bone-columns {
-    grid-template-columns: 1fr;
   }
 }

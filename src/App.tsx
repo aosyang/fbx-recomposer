@@ -303,6 +303,7 @@ export default function App() {
   const [treeCommand, setTreeCommand] = useState<TreeCommand | null>(null);
   const [animationImport, setAnimationImport] =
     useState<AnimationImportPreview | null>(null);
+  const [mappingDetailsOpen, setMappingDetailsOpen] = useState(false);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
   const normalizedBoneSearch = boneSearch.trim().toLowerCase();
@@ -314,6 +315,10 @@ export default function App() {
     () => countBoneMatches(boneHierarchy, normalizedBoneSearch),
     [boneHierarchy, normalizedBoneSearch],
   );
+
+  useEffect(() => {
+    setMappingDetailsOpen(false);
+  }, [animationImport?.fileName, animationImport?.selectedClipIndex]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -841,6 +846,12 @@ export default function App() {
     [],
   );
 
+  const matchedBoneCount = animationImport?.matchedBones.length ?? 0;
+  const unmatchedBoneCount = animationImport?.unmatchedBones.length ?? 0;
+  const totalAnimatedBoneCount = matchedBoneCount + unmatchedBoneCount;
+  const unmatchedRootCount = animationImport?.unmatchedRootNodes.length ?? 0;
+  const hasMappingIssues = unmatchedBoneCount + unmatchedRootCount > 0;
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -1208,12 +1219,6 @@ export default function App() {
             </div>
 
             <div className="import-dialog-body">
-              <p className="import-rule">
-                Exact names only. Root-parent transforms are imported only when a
-                unique, identically named target node exists. Unmatched bones remain
-                in their reference pose.
-              </p>
-
               {animationImport.clips.length > 0 && (
                 <label className="clip-field">
                   <span>Animation clip</span>
@@ -1236,50 +1241,149 @@ export default function App() {
                 <div className="import-error">{animationImport.error}</div>
               ) : (
                 <>
-                  <div className="import-stats">
+                  <div
+                    className={`import-summary ${
+                      hasMappingIssues ? "is-warning" : "is-ready"
+                    }`}
+                  >
+                    <span className="import-summary-icon" aria-hidden="true">
+                      {hasMappingIssues ? "!" : "✓"}
+                    </span>
                     <div>
                       <strong>
-                        {animationImport.matchedBones.length +
-                          animationImport.matchedRootNodes.length}
+                        {totalAnimatedBoneCount > 0
+                          ? unmatchedBoneCount > 0
+                            ? `${matchedBoneCount} of ${totalAnimatedBoneCount} bones matched`
+                            : `All ${totalAnimatedBoneCount} bones matched`
+                          : hasMappingIssues
+                            ? "Animation has mapping issues"
+                            : "Animation is ready to import"}
                       </strong>
-                      <span>Exact matches</span>
-                    </div>
-                    <div>
-                      <strong>
-                        {animationImport.unmatchedBones.length +
-                          animationImport.unmatchedRootNodes.length}
-                      </strong>
-                      <span>Ignored / reference pose</span>
+                      {unmatchedBoneCount > 0 && (
+                        <span>
+                          {unmatchedBoneCount} unmatched{" "}
+                          {unmatchedBoneCount === 1 ? "bone will" : "bones will"}{" "}
+                          remain in reference pose.
+                        </span>
+                      )}
+                      {unmatchedRootCount > 0 && (
+                        <span>
+                          {unmatchedRootCount} unmatched root{" "}
+                          {unmatchedRootCount === 1
+                            ? "transform will"
+                            : "transforms will"}{" "}
+                          be ignored.
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="import-bone-columns">
-                    <div>
-                      <h3>Will animate</h3>
-                      <ul>
-                        {animationImport.matchedBones.map((name) => (
-                          <li key={name} className="is-matched">{name}</li>
-                        ))}
-                        {animationImport.matchedRootNodes.map((name) => (
-                          <li key={`root-${name}`} className="is-matched is-root-transform">
-                            {name} · root transform
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div>
-                      <h3>Will be ignored</h3>
-                      <ul>
-                        {animationImport.unmatchedBones.map((name) => (
-                          <li key={name} className="is-unmatched">{name}</li>
-                        ))}
-                        {animationImport.unmatchedRootNodes.map((name) => (
-                          <li key={`root-${name}`} className="is-unmatched is-root-transform">
-                            {name} · root transform
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+
+                  <div className="import-rule-compact">
+                    <span>Bones are matched by exact name.</span>
+                    <span
+                      className="import-info"
+                      aria-describedby="animation-matching-tooltip"
+                      tabIndex={0}
+                    >
+                      ⓘ
+                      <span
+                        id="animation-matching-tooltip"
+                        className="import-tooltip"
+                        role="tooltip"
+                      >
+                        Root-parent transforms are imported only when a unique,
+                        identically named target node exists. Unmatched bones
+                        remain in reference pose.
+                      </span>
+                    </span>
                   </div>
+
+                  {hasMappingIssues && (
+                    <div className="mapping-issues">
+                      {animationImport.unmatchedBones.length > 0 && (
+                        <section>
+                          <h3>
+                            Unmatched bones
+                            <span>{animationImport.unmatchedBones.length}</span>
+                          </h3>
+                          <p>These bones will stay in reference pose.</p>
+                          <ul>
+                            {animationImport.unmatchedBones.map((name) => (
+                              <li key={name} title={name}>{name}</li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+                      {animationImport.unmatchedRootNodes.length > 0 && (
+                        <section>
+                          <h3>
+                            Unmatched root transforms
+                            <span>{animationImport.unmatchedRootNodes.length}</span>
+                          </h3>
+                          <ul>
+                            {animationImport.unmatchedRootNodes.map((name) => (
+                              <li key={name} title={name}>{name}</li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    className={`mapping-details-toggle ${
+                      mappingDetailsOpen ? "is-open" : ""
+                    }`}
+                    aria-expanded={mappingDetailsOpen}
+                    onClick={() => setMappingDetailsOpen((current) => !current)}
+                  >
+                    <span>Bone mapping details</span>
+                    <span className="mapping-details-chevron" aria-hidden="true">
+                      ›
+                    </span>
+                  </button>
+
+                  {mappingDetailsOpen && (
+                    <div className="mapping-details">
+                      {animationImport.matchedBones.length > 0 && (
+                        <section>
+                          <h3>
+                            Matched bones
+                            <span>{animationImport.matchedBones.length}</span>
+                          </h3>
+                          <ul>
+                            {animationImport.matchedBones.map((name) => (
+                              <li key={name} title={name}>{name}</li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+                      {animationImport.matchedRootNodes.length > 0 && (
+                        <section>
+                          <h3>
+                            Matched root transforms
+                            <span>{animationImport.matchedRootNodes.length}</span>
+                          </h3>
+                          <ul>
+                            {animationImport.matchedRootNodes.map((name) => (
+                              <li key={name} title={name}>{name}</li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+                      {hasMappingIssues && (
+                        <section>
+                          <h3>
+                            Unmatched
+                            <span>
+                              {unmatchedBoneCount + unmatchedRootCount}
+                            </span>
+                          </h3>
+                          <p>Shown above because they require attention.</p>
+                        </section>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>
