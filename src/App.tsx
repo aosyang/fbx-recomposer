@@ -237,6 +237,7 @@ function getBoundsIncludingBones(object: THREE.Object3D) {
 
 export default function App() {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const boneLabelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const animationInputRef = useRef<HTMLInputElement>(null);
   const loadModelRef = useRef<(file: File) => void>(() => undefined);
@@ -253,12 +254,16 @@ export default function App() {
   const setBonesVisibilityRef = useRef<(visible: boolean) => void>(
     () => undefined,
   );
+  const setBoneNameVisibilityRef = useRef<(visible: boolean) => void>(
+    () => undefined,
+  );
   const [loadState, setLoadState] = useState<LoadState>("empty");
   const [fileName, setFileName] = useState("");
   const [message, setMessage] = useState("Drop an FBX file here");
   const [isDragging, setIsDragging] = useState(false);
   const [hasBones, setHasBones] = useState(false);
   const [showBones, setShowBones] = useState(false);
+  const [showBoneName, setShowBoneName] = useState(false);
   const [boneHierarchy, setBoneHierarchy] = useState<BoneNode[]>([]);
   const [boneCount, setBoneCount] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -270,7 +275,8 @@ export default function App() {
 
   useEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport) return;
+    const boneLabel = boneLabelRef.current;
+    if (!viewport || !boneLabel) return;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x101214);
@@ -313,6 +319,8 @@ export default function App() {
     let mixer: THREE.AnimationMixer | null = null;
     let skeletonHelper: THREE.SkeletonHelper | null = null;
     let selectedBone: THREE.Bone | null = null;
+    let showSelectedBoneName = false;
+    const projectedBonePosition = new THREE.Vector3();
     let referenceTransforms = new Map<
       string,
       {
@@ -355,6 +363,10 @@ export default function App() {
     setBonesVisibilityRef.current = (visible: boolean) => {
       if (skeletonHelper) skeletonHelper.visible = visible;
     };
+    setBoneNameVisibilityRef.current = (visible: boolean) => {
+      showSelectedBoneName = visible;
+      boneLabel.hidden = !visible || !selectedBone;
+    };
     selectBoneRef.current = (boneId: string) => {
       if (!model) return;
       const object = model.getObjectByProperty("uuid", boneId);
@@ -371,6 +383,8 @@ export default function App() {
       selectionMarker.visible = true;
       selectionMarker.position.copy(position);
       selectionMarker.scale.setScalar(modelRadius * 0.022);
+      boneLabel.textContent = object.name || "Unnamed bone";
+      boneLabel.hidden = !showSelectedBoneName;
     };
 
     const discardPendingAnimation = () => {
@@ -602,6 +616,7 @@ export default function App() {
       setMessage("Loading model…");
       setHasBones(false);
       setShowBones(false);
+      setShowBoneName(false);
       setBoneHierarchy([]);
       setBoneCount(0);
       setPanelOpen(false);
@@ -609,6 +624,8 @@ export default function App() {
       setSelectedBoneId(null);
       selectedBone = null;
       selectionMarker.visible = false;
+      showSelectedBoneName = false;
+      boneLabel.hidden = true;
       discardPendingAnimation();
       if (skeletonHelper) skeletonHelper.visible = false;
 
@@ -693,6 +710,20 @@ export default function App() {
         selectedBone.getWorldPosition(selectionMarker.position);
       }
       controls.update();
+      if (selectedBone && showSelectedBoneName) {
+        projectedBonePosition
+          .copy(selectionMarker.position)
+          .project(camera);
+        const isVisible =
+          projectedBonePosition.z >= -1 && projectedBonePosition.z <= 1;
+        boneLabel.hidden = !isVisible;
+        if (isVisible) {
+          boneLabel.style.left =
+            `${(projectedBonePosition.x * 0.5 + 0.5) * viewport.clientWidth}px`;
+          boneLabel.style.top =
+            `${(-projectedBonePosition.y * 0.5 + 0.5) * viewport.clientHeight}px`;
+        }
+      }
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(animate);
     };
@@ -777,6 +808,24 @@ export default function App() {
                 <span className="toggle-indicator" />
                 Bones
               </button>
+              <button
+                className={`toggle-button ${showBoneName ? "is-active" : ""}`}
+                aria-pressed={showBoneName}
+                disabled={!selectedBoneId}
+                title={
+                  selectedBoneId
+                    ? "Show the selected bone name in the viewport"
+                    : "Select a bone from the hierarchy first"
+                }
+                onClick={() => {
+                  const nextValue = !showBoneName;
+                  setShowBoneName(nextValue);
+                  setBoneNameVisibilityRef.current(nextValue);
+                }}
+              >
+                <span className="toggle-indicator" />
+                Bone Name
+              </button>
               <button className="text-button" onClick={() => resetViewRef.current()}>
                 Reset view
               </button>
@@ -811,6 +860,7 @@ export default function App() {
       >
         <div className="viewport-stage">
           <div ref={viewportRef} className="viewport" />
+          <div ref={boneLabelRef} className="selected-bone-label" hidden />
 
           {loadState !== "ready" && (
             <button
