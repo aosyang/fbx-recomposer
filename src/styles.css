@@ -184,7 +184,7 @@ button {
 }
 
 .viewer.has-panel {
-  grid-template-columns: minmax(0, 1fr) min(260px, 42vw);
+  grid-template-columns: minmax(0, 1fr) 5px auto;
 }
 
 .viewport-stage {
@@ -338,16 +338,47 @@ button {
   position: relative;
   z-index: 5;
   display: grid;
-  width: auto;
+  width: 260px;
+  max-width: 60vw;
   min-width: 0;
   height: 100%;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   overflow: hidden;
   border: 0;
-  border-left: 1px solid #343940;
   border-radius: 0;
   color: #d8dde1;
   background: #16191c;
+}
+
+.panel-resizer {
+  position: relative;
+  z-index: 6;
+  width: 5px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: #24292e;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel-resizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: #3a4148;
+  content: "";
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.panel-resizer:hover::after,
+.panel-resizer.is-active::after,
+.panel-resizer:focus-visible::after {
+  background: #7ef29a;
+  box-shadow: 0 0 0 1px rgba(126, 242, 154, 0.18);
 }
 
 .bone-panel-header {
@@ -400,6 +431,79 @@ button {
   background: #2b3035;
 }
 
+.bone-panel-search {
+  display: grid;
+  min-width: 0;
+  padding: 5px;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  align-items: center;
+  border-bottom: 1px solid #30353a;
+  background: #191c1f;
+}
+
+.bone-search-icon {
+  z-index: 1;
+  display: grid;
+  height: 28px;
+  place-items: center;
+  color: #7d868e;
+  font-size: 15px;
+  pointer-events: none;
+}
+
+.bone-panel-search input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 5px;
+  border: 0;
+  outline: 0;
+  color: #dce1e4;
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+}
+
+.bone-panel-search input::placeholder {
+  color: #727b84;
+}
+
+.bone-panel-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.bone-panel-search:focus-within {
+  background: #202429;
+  box-shadow: inset 0 0 0 1px #465049;
+}
+
+.bone-search-count {
+  padding: 0 4px;
+  color: #7ef29a;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bone-search-clear {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  color: #858e96;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.bone-search-clear:hover {
+  color: #fff;
+  background: #30363b;
+}
+
 .bone-panel-actions {
   display: grid;
   padding: 5px;
@@ -426,6 +530,11 @@ button {
   background: #2d3338;
 }
 
+.bone-panel-actions button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .bone-panel-actions button:focus-visible {
   outline: 2px solid #7ef29a;
   outline-offset: 1px;
@@ -437,6 +546,13 @@ button {
   padding: 5px 5px 10px;
   scrollbar-color: #454c54 transparent;
   scrollbar-width: thin;
+}
+
+.bone-search-empty {
+  padding: 22px 10px;
+  color: #747d85;
+  font-size: 10px;
+  text-align: center;
 }
 
 .bone-tree ul {
@@ -501,6 +617,10 @@ button {
 
 .bone-expander:hover {
   color: #dce1e5;
+}
+
+.bone-expander:disabled {
+  cursor: default;
 }
 
 .bone-expander:focus-visible,

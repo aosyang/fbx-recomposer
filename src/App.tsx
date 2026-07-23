@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -125,20 +125,46 @@ function collectBoneHierarchy(object: THREE.Object3D): BoneNode[] {
   });
 }
 
+function filterBoneHierarchy(nodes: BoneNode[], query: string): BoneNode[] {
+  if (!query) return nodes;
+
+  return nodes.flatMap((node) => {
+    const children = filterBoneHierarchy(node.children, query);
+    if (!node.name.toLowerCase().includes(query) && children.length === 0) {
+      return [];
+    }
+    return [{ ...node, children }];
+  });
+}
+
+function countBoneMatches(nodes: BoneNode[], query: string): number {
+  if (!query) return nodes.length;
+  return nodes.reduce(
+    (count, node) =>
+      count +
+      Number(node.name.toLowerCase().includes(query)) +
+      countBoneMatches(node.children, query),
+    0,
+  );
+}
+
 function BoneTreeNode({
   node,
   depth,
   command,
+  forceOpen,
   selectedBoneId,
   onSelect,
 }: {
   node: BoneNode;
   depth: number;
   command: TreeCommand | null;
+  forceOpen: boolean;
   selectedBoneId: string | null;
   onSelect: (bone: BoneNode) => void;
 }) {
   const [isOpen, setIsOpen] = useState(depth < 1);
+  const nodeIsOpen = forceOpen || isOpen;
 
   useEffect(() => {
     if (command) setIsOpen(command.expanded);
@@ -150,12 +176,13 @@ function BoneTreeNode({
         className={`bone-row ${selectedBoneId === node.id ? "is-selected" : ""}`}
         role="treeitem"
         aria-selected={selectedBoneId === node.id}
-        aria-expanded={node.children.length ? isOpen : undefined}
+        aria-expanded={node.children.length ? nodeIsOpen : undefined}
       >
         {node.children.length ? (
           <button
-            className={`bone-expander ${isOpen ? "is-open" : ""}`}
-            aria-label={`${isOpen ? "Collapse" : "Expand"} ${node.name}`}
+            className={`bone-expander ${nodeIsOpen ? "is-open" : ""}`}
+            aria-label={`${nodeIsOpen ? "Collapse" : "Expand"} ${node.name}`}
+            disabled={forceOpen}
             onClick={() => setIsOpen((current) => !current)}
           >
             ›
@@ -172,7 +199,7 @@ function BoneTreeNode({
           <span>{node.name}</span>
         </button>
       </div>
-      {node.children.length > 0 && isOpen && (
+      {node.children.length > 0 && nodeIsOpen && (
         <ul role="group">
           {node.children.map((child) => (
             <BoneTreeNode
@@ -180,6 +207,7 @@ function BoneTreeNode({
               node={child}
               depth={depth + 1}
               command={command}
+              forceOpen={forceOpen}
               selectedBoneId={selectedBoneId}
               onSelect={onSelect}
             />
@@ -238,6 +266,9 @@ function getBoundsIncludingBones(object: THREE.Object3D) {
 export default function App() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const boneLabelRef = useRef<HTMLDivElement>(null);
+  const panelResizeRef = useRef<{ startX: number; startWidth: number } | null>(
+    null,
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const animationInputRef = useRef<HTMLInputElement>(null);
   const loadModelRef = useRef<(file: File) => void>(() => undefined);
@@ -267,11 +298,22 @@ export default function App() {
   const [boneHierarchy, setBoneHierarchy] = useState<BoneNode[]>([]);
   const [boneCount, setBoneCount] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(260);
+  const [boneSearch, setBoneSearch] = useState("");
   const [treeCommand, setTreeCommand] = useState<TreeCommand | null>(null);
   const [animationImport, setAnimationImport] =
     useState<AnimationImportPreview | null>(null);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const normalizedBoneSearch = boneSearch.trim().toLowerCase();
+  const filteredBoneHierarchy = useMemo(
+    () => filterBoneHierarchy(boneHierarchy, normalizedBoneSearch),
+    [boneHierarchy, normalizedBoneSearch],
+  );
+  const boneMatchCount = useMemo(
+    () => countBoneMatches(boneHierarchy, normalizedBoneSearch),
+    [boneHierarchy, normalizedBoneSearch],
+  );
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -620,6 +662,7 @@ export default function App() {
       setBoneHierarchy([]);
       setBoneCount(0);
       setPanelOpen(false);
+      setBoneSearch("");
       setTreeCommand(null);
       setSelectedBoneId(null);
       selectedBone = null;
@@ -757,6 +800,47 @@ export default function App() {
     if (file) loadModelRef.current(file);
   }, []);
 
+  const startPanelResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      const panel = event.currentTarget.nextElementSibling;
+      if (!(panel instanceof HTMLElement)) return;
+
+      panelResizeRef.current = {
+        startX: event.clientX,
+        startWidth: panel.getBoundingClientRect().width,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.currentTarget.classList.add("is-active");
+      event.preventDefault();
+    },
+    [],
+  );
+
+  const resizePanel = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const resize = panelResizeRef.current;
+      const viewer = event.currentTarget.parentElement;
+      if (!resize || !viewer) return;
+
+      const maxWidth = Math.max(180, viewer.getBoundingClientRect().width * 0.6);
+      const nextWidth = resize.startWidth + resize.startX - event.clientX;
+      setPanelWidth(Math.round(Math.min(maxWidth, Math.max(180, nextWidth))));
+    },
+    [],
+  );
+
+  const stopPanelResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      panelResizeRef.current = null;
+      event.currentTarget.classList.remove("is-active");
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [],
+  );
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -890,7 +974,45 @@ export default function App() {
         </div>
 
         {loadState === "ready" && hasBones && panelOpen && (
-          <aside className="bone-panel" aria-label="Bone hierarchy">
+          <>
+            <div
+              className="panel-resizer"
+              role="separator"
+              aria-label="Resize bone hierarchy panel"
+              aria-orientation="vertical"
+              aria-valuemin={180}
+              aria-valuenow={panelWidth}
+              tabIndex={0}
+              onPointerDown={startPanelResize}
+              onPointerMove={resizePanel}
+              onPointerUp={stopPanelResize}
+              onPointerCancel={stopPanelResize}
+              onLostPointerCapture={(event) => {
+                panelResizeRef.current = null;
+                event.currentTarget.classList.remove("is-active");
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+                  return;
+                }
+                const viewerWidth =
+                  event.currentTarget.parentElement?.getBoundingClientRect()
+                    .width ?? window.innerWidth;
+                const maxWidth = Math.max(180, viewerWidth * 0.6);
+                const delta = event.key === "ArrowLeft" ? 16 : -16;
+                setPanelWidth((current) =>
+                  Math.round(
+                    Math.min(maxWidth, Math.max(180, current + delta)),
+                  ),
+                );
+                event.preventDefault();
+              }}
+            />
+            <aside
+              className="bone-panel"
+              aria-label="Bone hierarchy"
+              style={{ width: panelWidth }}
+            >
             <div className="bone-panel-header">
               <div>
                 <h2>Bone hierarchy</h2>
@@ -904,8 +1026,33 @@ export default function App() {
                 ×
               </button>
             </div>
+            <div className="bone-panel-search">
+              <span className="bone-search-icon" aria-hidden="true">⌕</span>
+              <input
+                type="search"
+                value={boneSearch}
+                placeholder="Search bones"
+                aria-label="Search bones by name"
+                onChange={(event) => setBoneSearch(event.target.value)}
+              />
+              {normalizedBoneSearch && (
+                <>
+                  <span className="bone-search-count">
+                    {boneMatchCount}
+                  </span>
+                  <button
+                    className="bone-search-clear"
+                    aria-label="Clear bone search"
+                    onClick={() => setBoneSearch("")}
+                  >
+                    ×
+                  </button>
+                </>
+              )}
+            </div>
             <div className="bone-panel-actions">
               <button
+                disabled={Boolean(normalizedBoneSearch)}
                 onClick={() =>
                   setTreeCommand((current) => ({
                     expanded: true,
@@ -916,6 +1063,7 @@ export default function App() {
                 Expand all
               </button>
               <button
+                disabled={Boolean(normalizedBoneSearch)}
                 onClick={() =>
                   setTreeCommand((current) => ({
                     expanded: false,
@@ -927,23 +1075,29 @@ export default function App() {
               </button>
             </div>
             <div className="bone-tree">
-              <ul role="tree">
-                {boneHierarchy.map((bone) => (
-                  <BoneTreeNode
-                    key={bone.id}
-                    node={bone}
-                    depth={0}
-                    command={treeCommand}
-                    selectedBoneId={selectedBoneId}
-                    onSelect={(bone) => {
-                      setSelectedBoneId(bone.id);
-                      selectBoneRef.current(bone.id);
-                    }}
-                  />
-                ))}
-              </ul>
+              {filteredBoneHierarchy.length > 0 ? (
+                <ul role="tree">
+                  {filteredBoneHierarchy.map((bone) => (
+                    <BoneTreeNode
+                      key={bone.id}
+                      node={bone}
+                      depth={0}
+                      command={treeCommand}
+                      forceOpen={Boolean(normalizedBoneSearch)}
+                      selectedBoneId={selectedBoneId}
+                      onSelect={(bone) => {
+                        setSelectedBoneId(bone.id);
+                        selectBoneRef.current(bone.id);
+                      }}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <div className="bone-search-empty">No matching bones</div>
+              )}
             </div>
-          </aside>
+            </aside>
+          </>
         )}
 
         <input
