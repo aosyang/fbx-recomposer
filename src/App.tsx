@@ -266,6 +266,7 @@ export default function App() {
   const [animationImport, setAnimationImport] =
     useState<AnimationImportPreview | null>(null);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -728,10 +729,29 @@ export default function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="./" aria-label="FBX Viewer home">
-          <span className="brand-mark">F</span>
-          <span>FBX Viewer</span>
-        </a>
+        <div className="topbar-left">
+          <a className="brand" href="./" aria-label="FBX Viewer home">
+            <span className="brand-mark">F</span>
+            <span>FBX Viewer</span>
+          </a>
+          <div className="file-actions">
+            <button className="primary-button" onClick={() => inputRef.current?.click()}>
+              Open FBX
+            </button>
+            <button
+              className="secondary-button"
+              disabled={loadState !== "ready" || !hasBones}
+              title={
+                hasBones
+                  ? "Import exact-name bone animation from another FBX"
+                  : "Open a rigged FBX before importing animation"
+              }
+              onClick={() => animationInputRef.current?.click()}
+            >
+              Import Animation
+            </button>
+          </div>
+        </div>
         <div className="actions">
           {loadState === "ready" && (
             <>
@@ -762,21 +782,6 @@ export default function App() {
               </button>
             </>
           )}
-          <button
-            className="secondary-button"
-            disabled={loadState !== "ready" || !hasBones}
-            title={
-              hasBones
-                ? "Import exact-name bone animation from another FBX"
-                : "Open a rigged FBX before importing animation"
-            }
-            onClick={() => animationInputRef.current?.click()}
-          >
-            Import Animation
-          </button>
-          <button className="primary-button" onClick={() => inputRef.current?.click()}>
-            Open FBX
-          </button>
         </div>
       </header>
 
@@ -795,7 +800,13 @@ export default function App() {
         onDrop={(event) => {
           event.preventDefault();
           setIsDragging(false);
-          openFile(event.dataTransfer.files[0]);
+          const file = event.dataTransfer.files[0];
+          if (!file) return;
+          if (file.name.toLowerCase().endsWith(".fbx")) {
+            setDroppedFile(file);
+          } else {
+            openFile(file);
+          }
         }}
       >
         <div className="viewport-stage">
@@ -907,6 +918,68 @@ export default function App() {
           }}
         />
       </section>
+
+      {droppedFile && (
+        <div className="import-backdrop">
+          <section
+            className="drop-choice-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="drop-choice-title"
+            aria-describedby="drop-choice-description"
+          >
+            <div className="drop-choice-header">
+              <div>
+                <h2 id="drop-choice-title">How should this FBX be opened?</h2>
+                <p>{droppedFile.name}</p>
+              </div>
+              <button
+                className="close-panel"
+                aria-label="Cancel"
+                onClick={() => setDroppedFile(null)}
+              >
+                ×
+              </button>
+            </div>
+            <p id="drop-choice-description" className="drop-choice-description">
+              Open it as a new model, or import its animation onto the current model.
+            </p>
+            <div className="drop-choice-actions">
+              <button
+                className="primary-button"
+                onClick={() => {
+                  const file = droppedFile;
+                  setDroppedFile(null);
+                  openFile(file);
+                }}
+              >
+                Open as Model
+              </button>
+              <button
+                className="secondary-button"
+                disabled={loadState !== "ready" || !hasBones}
+                title={
+                  hasBones
+                    ? "Import exact-name bone animation"
+                    : "Open a rigged model before importing animation"
+                }
+                onClick={() => {
+                  const file = droppedFile;
+                  setDroppedFile(null);
+                  loadAnimationRef.current(file);
+                }}
+              >
+                Import as Animation
+              </button>
+            </div>
+            {(loadState !== "ready" || !hasBones) && (
+              <p className="drop-choice-hint">
+                Import as Animation requires a rigged model to be open first.
+              </p>
+            )}
+          </section>
+        </div>
+      )}
 
       {animationImport && (
         <div className="import-backdrop">
