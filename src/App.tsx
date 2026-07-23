@@ -378,6 +378,7 @@ export default function App() {
     >();
     let pendingAnimationSource: THREE.Group | null = null;
     let pendingAnimationFileName = "";
+    let animationLoadVersion = 0;
     let lastFrame = performance.now();
     let frameId = 0;
 
@@ -435,12 +436,37 @@ export default function App() {
     };
 
     const discardPendingAnimation = () => {
+      animationLoadVersion += 1;
       if (pendingAnimationSource) {
         disposeObject(pendingAnimationSource);
         pendingAnimationSource = null;
       }
       pendingAnimationFileName = "";
       setAnimationImport(null);
+    };
+
+    const clearCurrentAnimation = () => {
+      if (!model) return;
+
+      if (mixer) {
+        mixer.stopAllAction();
+        mixer.uncacheRoot(model);
+        mixer = null;
+      }
+
+      model.traverse((child) => {
+        if (child instanceof THREE.SkinnedMesh) {
+          child.skeleton.pose();
+        }
+      });
+      model.traverse((child) => {
+        const reference = referenceTransforms.get(child.uuid);
+        if (!reference) return;
+        child.position.copy(reference.position);
+        child.quaternion.copy(reference.quaternion);
+        child.scale.copy(reference.scale);
+      });
+      model.updateWorldMatrix(true, true);
     };
 
     const buildAnimationPreview = (clipIndex: number) => {
@@ -475,7 +501,7 @@ export default function App() {
         const targetName = getTrackBoneName(track.name);
         if (!targetName) return;
 
-        if (sourceBoneNames.has(targetName)) {
+        if (sourceBoneNames.has(targetName) && isTransformTrack(track)) {
           animatedBoneNames.add(targetName);
           if (targetBoneNames.has(targetName)) matchedTrackCount += 1;
           return;
@@ -528,8 +554,10 @@ export default function App() {
       if (!model || !file.name.toLowerCase().endsWith(".fbx")) return;
 
       discardPendingAnimation();
+      const loadVersion = animationLoadVersion;
       const reader = new FileReader();
       reader.onerror = () => {
+        if (loadVersion !== animationLoadVersion) return;
         setAnimationImport({
           fileName: file.name,
           clips: [],
@@ -543,6 +571,7 @@ export default function App() {
         });
       };
       reader.onload = () => {
+        if (loadVersion !== animationLoadVersion) return;
         try {
           pendingAnimationSource = new FBXLoader().parse(
             reader.result as ArrayBuffer,
@@ -611,7 +640,7 @@ export default function App() {
         if (!targetName) return [];
 
         let targetObject: THREE.Object3D | undefined;
-        if (sourceBoneNames.has(targetName)) {
+        if (sourceBoneNames.has(targetName) && isTransformTrack(track)) {
           targetObject = targetBones.get(targetName);
         } else if (
           sourceRootNodeNames.has(targetName) &&
@@ -627,19 +656,7 @@ export default function App() {
 
       if (!tracks.length) return;
 
-      mixer?.stopAllAction();
-      mixer?.uncacheRoot(model);
-      model.traverse((child) => {
-        const reference = referenceTransforms.get(child.uuid);
-        if (!reference) return;
-        child.position.copy(reference.position);
-        child.quaternion.copy(reference.quaternion);
-        child.scale.copy(reference.scale);
-      });
-      model.traverse((child) => {
-        if (child instanceof THREE.SkinnedMesh) child.skeleton.pose();
-      });
-      model.updateWorldMatrix(true, true);
+      clearCurrentAnimation();
 
       const importedClip = new THREE.AnimationClip(
         sourceClip.name || "Imported animation",
@@ -648,6 +665,7 @@ export default function App() {
       );
       mixer = new THREE.AnimationMixer(model);
       mixer.clipAction(importedClip).reset().play();
+      mixer.update(0);
       discardPendingAnimation();
     };
 
