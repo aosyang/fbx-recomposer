@@ -312,6 +312,7 @@ export default function App() {
   const [panelWidth, setPanelWidth] = useState(260);
   const [boneSearch, setBoneSearch] = useState("");
   const [treeCommand, setTreeCommand] = useState<TreeCommand | null>(null);
+  const [displayMenuOpen, setDisplayMenuOpen] = useState(false);
   const [animationImport, setAnimationImport] =
     useState<AnimationImportPreview | null>(null);
   const [animationTimeline, setAnimationTimeline] =
@@ -332,6 +333,13 @@ export default function App() {
   useEffect(() => {
     setMappingDetailsOpen(false);
   }, [animationImport?.fileName, animationImport?.selectedClipIndex]);
+
+  useEffect(() => {
+    if (!displayMenuOpen) return;
+    const closeDisplayMenu = () => setDisplayMenuOpen(false);
+    window.addEventListener("pointerdown", closeDisplayMenu);
+    return () => window.removeEventListener("pointerdown", closeDisplayMenu);
+  }, [displayMenuOpen]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -1047,40 +1055,70 @@ export default function App() {
         </div>
         <div className="viewport-display" aria-label="Viewport display controls">
           {loadState === "ready" && (
-            <>
-              <span className="display-label">Viewport</span>
+            <div
+              className="display-menu"
+              onPointerDown={(event) => event.stopPropagation()}
+            >
               <button
-                className={`display-toggle ${showBones ? "is-active" : ""}`}
-                aria-pressed={showBones}
-                disabled={!hasBones}
-                title={hasBones ? "Toggle skeleton overlay" : "This model has no bones"}
-                onClick={() => {
-                  const nextValue = !showBones;
-                  setShowBones(nextValue);
-                  setBonesVisibilityRef.current(nextValue);
-                }}
+                className={`display-menu-trigger ${
+                  displayMenuOpen ? "is-open" : ""
+                }`}
+                type="button"
+                aria-expanded={displayMenuOpen}
+                aria-haspopup="menu"
+                onClick={() => setDisplayMenuOpen((current) => !current)}
               >
-                <span className="display-check" aria-hidden="true" />
-                Bones
+                Display
+                <span className="display-menu-chevron" aria-hidden="true" />
               </button>
-              <button
-                className={`display-toggle ${showBoneName ? "is-active" : ""}`}
-                aria-pressed={showBoneName}
-                title={
-                  selectedBoneId
-                    ? "Show the selected bone name in the viewport"
-                    : "Show selected bone names when a bone is selected"
-                }
-                onClick={() => {
-                  const nextValue = !showBoneName;
-                  setShowBoneName(nextValue);
-                  setBoneNameVisibilityRef.current(nextValue);
-                }}
-              >
-                <span className="display-check" aria-hidden="true" />
-                Bone Names
-              </button>
-            </>
+              {displayMenuOpen && (
+                <div className="display-menu-popover" role="menu">
+                  <button
+                    className={`display-menu-item ${
+                      showBones ? "is-active" : ""
+                    }`}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showBones}
+                    disabled={!hasBones}
+                    title={
+                      hasBones
+                        ? "Toggle skeleton overlay"
+                        : "This model has no bones"
+                    }
+                    onClick={() => {
+                      const nextValue = !showBones;
+                      setShowBones(nextValue);
+                      setBonesVisibilityRef.current(nextValue);
+                    }}
+                  >
+                    <span className="display-check" aria-hidden="true" />
+                    Bones
+                  </button>
+                  <button
+                    className={`display-menu-item ${
+                      showBoneName ? "is-active" : ""
+                    }`}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showBoneName}
+                    title={
+                      selectedBoneId
+                        ? "Show the selected bone name in the viewport"
+                        : "Show selected bone names when a bone is selected"
+                    }
+                    onClick={() => {
+                      const nextValue = !showBoneName;
+                      setShowBoneName(nextValue);
+                      setBoneNameVisibilityRef.current(nextValue);
+                    }}
+                  >
+                    <span className="display-check" aria-hidden="true" />
+                    Bone Names
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </header>
@@ -1306,7 +1344,7 @@ export default function App() {
               </button>
             </div>
             <div className="bone-panel-search">
-              <span className="bone-search-icon" aria-hidden="true">⌕</span>
+              <span className="bone-search-icon" aria-hidden="true" />
               <input
                 type="search"
                 value={boneSearch}
