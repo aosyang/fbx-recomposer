@@ -1,25 +1,39 @@
 # FBX Viewer
 
-A small, fully static FBX viewer built with Vite, React, and Three.js. Files are
-parsed locally in the browser and are never uploaded.
+A browser-based tool for viewing, inspecting, and playing FBX models and animations.
 
-## Development
+FBX Viewer runs entirely in the browser and can be deployed to any static hosting service. Files are processed locally and are never uploaded to a server.
+
+Built with [Vite](https://vite.dev/), [React](https://react.dev/), and [Three.js](https://threejs.org/).
+
+## Features
+
+* Load FBX files using drag and drop
+* Import animation clips from additional FBX files
+* Preview, scrub, and control animations on a timeline
+* Inspect the model's bone hierarchy
+* Toggle viewport helpers and display options
+* Switch between original materials and solid-color rendering
+* Load morph targets using an optimized parsing path
+
+## Getting Started
+
+### Install dependencies
 
 ```bash
 npm install
+```
+
+### Start the development server
+
+```bash
 npm run dev
 ```
 
-## Production build
+## Production Build
 
 ```bash
 npm run build
 ```
 
-The static site is generated in `dist/` and can be hosted on GitHub Pages.
-
-## GitHub Pages
-
-Push this repository to GitHub, open **Settings → Pages**, and set the source to
-**GitHub Actions**. The included workflow deploys the site on each push to
-`main`.
+The static site files are generated in the `dist/` directory and can be deployed to any static hosting service.
