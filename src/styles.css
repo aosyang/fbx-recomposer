@@ -16,6 +16,7 @@
   --icon-timeline-step-forward: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMTYgMTYiPgoJPHBhdGggZD0iTTAgMGgxNnYxNkgweiIgZmlsbD0ibm9uZSIgLz4KCTxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIHN0cm9rZS13aWR0aD0iMS41IiBkPSJtNS43NSAxMi4yNSA0LjUtNC4yNS00LjUtNC4yNSIgLz4KPC9zdmc+Cg==");
   --icon-file-open: url("");
   --icon-animation-import: url("");
+  --icon-upload: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMTYgMTYiPgoJPHBhdGggZD0iTTAgMGgxNnYxNkgweiIgZmlsbD0ibm9uZSIgLz4KCTxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIHN0cm9rZS13aWR0aD0iMS41IiBkPSJtMy43NSAyLjc1aDltLTguNSA2LjUgNC0zLjUgNCAzLjVtLTQgNXYtOC41IiAvPgo8L3N2Zz4K");
   --icon-search: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMTYgMTYiPgoJPHBhdGggZD0iTTAgMGgxNnYxNkgweiIgZmlsbD0ibm9uZSIgLz4KCTxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIHN0cm9rZS13aWR0aD0iMS41Ij4KCQk8cGF0aCBkPSJtMTEuMjUgMTEuMjUgMyAzIiAvPgoJCTxjaXJjbGUgY3g9IjcuNSIgY3k9IjcuNSIgcj0iNC43NSIgLz4KCTwvZz4KPC9zdmc+Cg==");
   --icon-hierarchy-close: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMTYgMTYiPgoJPHBhdGggZD0iTTAgMGgxNnYxNkgweiIgZmlsbD0ibm9uZSIgLz4KCTxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIHN0cm9rZS13aWR0aD0iMS41IiBkPSJtMTEuMjUgNC43NS02LjUgNi41bTAtNi41IDYuNSA2LjUiIC8+Cjwvc3ZnPgo=");
   --icon-hierarchy-node: url("");
@@ -426,10 +427,17 @@ button {
   height: 42px;
   place-items: center;
   border-radius: 12px;
-  color: #15221a;
   background: #7ef29a;
-  font-size: 22px;
-  font-weight: 700;
+}
+
+.upload-icon::before {
+  display: block;
+  width: 22px;
+  height: 22px;
+  background: #15221a;
+  content: "";
+  -webkit-mask: var(--icon-upload) center / contain no-repeat;
+  mask: var(--icon-upload) center / contain no-repeat;
 }
 
 .file-pill,

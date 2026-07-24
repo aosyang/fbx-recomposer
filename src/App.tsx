@@ -1157,7 +1157,7 @@ export default function App() {
               type="button"
               onClick={() => inputRef.current?.click()}
             >
-              <span className="upload-icon" aria-hidden="true">↑</span>
+              <span className="upload-icon" aria-hidden="true" />
               <strong>{message}</strong>
               <span>
                 {loadState === "loading"
