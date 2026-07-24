@@ -1049,14 +1049,6 @@ export default function App() {
           {loadState === "ready" && (
             <>
               <button
-                className={`panel-button ${panelOpen ? "is-active" : ""}`}
-                aria-pressed={panelOpen}
-                disabled={!hasBones}
-                onClick={() => setPanelOpen((current) => !current)}
-              >
-                Hierarchy
-              </button>
-              <button
                 className={`toggle-button ${showBones ? "is-active" : ""}`}
                 aria-pressed={showBones}
                 disabled={!hasBones}
@@ -1240,6 +1232,17 @@ export default function App() {
                 </div>
               )}
               <div className="help">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+              {hasBones && !panelOpen && (
+                <button
+                  className="hierarchy-reopen"
+                  type="button"
+                  aria-label="Open bone hierarchy"
+                  title="Open bone hierarchy"
+                  onClick={() => setPanelOpen(true)}
+                >
+                  <span aria-hidden="true" />
+                </button>
+              )}
             </>
           )}
         </div>

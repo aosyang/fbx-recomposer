@@ -89,7 +89,6 @@ button {
 
 .text-button,
 .toggle-button,
-.panel-button,
 .secondary-button,
 .primary-button {
   min-height: 36px;
@@ -117,7 +116,6 @@ button {
   opacity: 0.42;
 }
 
-.panel-button,
 .toggle-button {
   display: inline-flex;
   gap: 7px;
@@ -126,19 +124,16 @@ button {
   background: #24282d;
 }
 
-.panel-button:hover:not(:disabled),
 .toggle-button:hover:not(:disabled) {
   color: #fff;
   background: #2d3238;
 }
 
-.panel-button:disabled,
 .toggle-button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
 }
 
-.panel-button.is-active,
 .toggle-button.is-active {
   color: #c9ffd6;
   background: rgba(126, 242, 154, 0.15);
@@ -238,6 +233,54 @@ button {
 .viewer.is-dragging .viewport-stage::after {
   border-color: #7ef29a;
   background: rgba(126, 242, 154, 0.07);
+}
+
+.hierarchy-reopen {
+  position: absolute;
+  z-index: 4;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #343940;
+  border-radius: 8px;
+  color: #cbd1d5;
+  background: rgba(23, 26, 29, 0.86);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+
+.hierarchy-reopen:hover {
+  border-color: #485159;
+  color: #fff;
+  background: rgba(35, 39, 44, 0.92);
+}
+
+.hierarchy-reopen:focus-visible {
+  outline: 2px solid #7ef29a;
+  outline-offset: 2px;
+}
+
+.hierarchy-reopen span {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+}
+
+.hierarchy-reopen span::before {
+  position: absolute;
+  top: -1.5px;
+  right: 3px;
+  bottom: -1.5px;
+  width: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
 }
 
 .drop-card {
@@ -1271,6 +1314,11 @@ button {
 
   .help {
     display: none;
+  }
+
+  .hierarchy-reopen {
+    top: 10px;
+    right: 10px;
   }
 
   .timeline-control {
