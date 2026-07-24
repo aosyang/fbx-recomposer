@@ -334,6 +334,125 @@ button {
   transition: right 180ms ease;
 }
 
+.timeline-control {
+  position: absolute;
+  z-index: 4;
+  right: 18px;
+  bottom: 66px;
+  left: 18px;
+  display: grid;
+  min-height: 52px;
+  padding: 9px 12px;
+  grid-template-columns: auto minmax(120px, 190px) auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #343940;
+  border-radius: 10px;
+  color: #dce1e5;
+  background: rgba(23, 26, 29, 0.88);
+  backdrop-filter: blur(12px);
+}
+
+.timeline-play,
+.timeline-step {
+  min-width: 62px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.timeline-play {
+  color: #102017;
+  background: #7ef29a;
+}
+
+.timeline-play:hover {
+  background: #94f7ab;
+}
+
+.timeline-step {
+  min-width: 38px;
+  padding: 0 8px;
+  color: #cbd1d5;
+  background: #2a2f34;
+}
+
+.timeline-step:hover {
+  color: #fff;
+  background: #343a40;
+}
+
+.timeline-meta {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.timeline-meta span {
+  overflow: hidden;
+  color: #eef2f3;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-meta span:last-child {
+  color: #98a1a9;
+  font-size: 10px;
+}
+
+.timeline-scrubber {
+  position: relative;
+  min-width: 0;
+  height: 32px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.timeline-scrubber:focus-visible {
+  border-radius: 999px;
+  outline: 2px solid #7ef29a;
+  outline-offset: 3px;
+}
+
+.timeline-track {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  overflow: hidden;
+  border: 1px solid #59616a;
+  border-radius: 999px;
+  background: #32383f;
+}
+
+.timeline-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #7ef29a;
+}
+
+.timeline-thumb {
+  position: absolute;
+  top: 50%;
+  width: 17px;
+  height: 17px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #102017;
+  border-radius: 50%;
+  background: #7ef29a;
+  box-shadow: 0 0 0 5px rgba(126, 242, 154, 0.16);
+  pointer-events: none;
+}
+
 .bone-panel {
   position: relative;
   z-index: 5;
@@ -1105,6 +1224,24 @@ button {
 
   .help {
     display: none;
+  }
+
+  .timeline-control {
+    right: 10px;
+    bottom: 54px;
+    left: 10px;
+    min-height: 92px;
+    padding: 9px;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    gap: 8px;
+  }
+
+  .timeline-scrubber {
+    grid-column: 2 / -2;
+  }
+
+  .timeline-step {
+    min-width: 36px;
   }
 
   .bone-panel {

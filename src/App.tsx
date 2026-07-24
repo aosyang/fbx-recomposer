@@ -28,6 +28,13 @@ type AnimationImportPreview = {
   error?: string;
 };
 
+type AnimationTimeline = {
+  clipName: string;
+  time: number;
+  duration: number;
+  isPlaying: boolean;
+};
+
 function getTrackBoneName(trackName: string) {
   try {
     const parsed = THREE.PropertyBinding.parseTrackName(trackName);
@@ -281,7 +288,11 @@ export default function App() {
   );
   const cancelAnimationImportRef = useRef<() => void>(() => undefined);
   const selectBoneRef = useRef<(boneId: string) => void>(() => undefined);
-  const resetViewRef = useRef<() => void>(() => undefined);
+  const frameObjectRef = useRef<() => void>(() => undefined);
+  const seekAnimationRef = useRef<(time: number) => void>(() => undefined);
+  const setAnimationPlayingRef = useRef<(playing: boolean) => void>(
+    () => undefined,
+  );
   const setBonesVisibilityRef = useRef<(visible: boolean) => void>(
     () => undefined,
   );
@@ -303,6 +314,8 @@ export default function App() {
   const [treeCommand, setTreeCommand] = useState<TreeCommand | null>(null);
   const [animationImport, setAnimationImport] =
     useState<AnimationImportPreview | null>(null);
+  const [animationTimeline, setAnimationTimeline] =
+    useState<AnimationTimeline | null>(null);
   const [mappingDetailsOpen, setMappingDetailsOpen] = useState(false);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
@@ -364,6 +377,10 @@ export default function App() {
 
     let model: THREE.Group | null = null;
     let mixer: THREE.AnimationMixer | null = null;
+    let animationActions: THREE.AnimationAction[] = [];
+    let animationDuration = 0;
+    let animationClipName = "";
+    let lastTimelineUpdate = 0;
     let skeletonHelper: THREE.SkeletonHelper | null = null;
     let selectedBone: THREE.Bone | null = null;
     let showSelectedBoneName = false;
@@ -389,25 +406,83 @@ export default function App() {
       camera.updateProjectionMatrix();
     };
 
-    const frameModel = () => {
+    const frameObject = () => {
       if (!model) return;
       const box = getBoundsIncludingBones(model);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       const radius = Math.max(size.length() * 0.5, 0.1);
       const distance = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2));
+      const viewDirection = camera.position.clone().sub(controls.target);
+      if (viewDirection.lengthSq() < 0.000001) {
+        viewDirection.set(0.7, 0.45, 1);
+      }
+      viewDirection.normalize();
 
       controls.target.copy(center);
-      camera.position.copy(
-        center.clone().add(new THREE.Vector3(0.7, 0.45, 1).normalize().multiplyScalar(distance)),
-      );
+      camera.position.copy(center).addScaledVector(viewDirection, distance);
       camera.near = Math.max(radius / 1000, 0.001);
       camera.far = Math.max(radius * 100, 1000);
       camera.updateProjectionMatrix();
       controls.update();
     };
 
-    resetViewRef.current = frameModel;
+    frameObjectRef.current = frameObject;
+    const getAnimationTime = () => animationActions[0]?.time ?? 0;
+    const syncAnimationTimeline = (force = false) => {
+      if (!mixer || animationDuration <= 0 || animationActions.length === 0) {
+        setAnimationTimeline(null);
+        return;
+      }
+
+      const now = performance.now();
+      if (!force && now - lastTimelineUpdate < 80) return;
+      lastTimelineUpdate = now;
+
+      setAnimationTimeline({
+        clipName: animationClipName,
+        time: Math.min(getAnimationTime(), animationDuration),
+        duration: animationDuration,
+        isPlaying: animationActions.some((action) => !action.paused),
+      });
+    };
+
+    const setActiveAnimation = (
+      nextMixer: THREE.AnimationMixer,
+      clips: THREE.AnimationClip[],
+    ) => {
+      mixer = nextMixer;
+      animationActions = clips.map((clip) =>
+        nextMixer.clipAction(clip).reset().play(),
+      );
+      animationDuration = Math.max(...clips.map((clip) => clip.duration), 0);
+      animationClipName =
+        clips.length === 1
+          ? clips[0].name || "Animation"
+          : `${clips.length} animations`;
+      syncAnimationTimeline(true);
+    };
+
+    seekAnimationRef.current = (time: number) => {
+      if (!mixer || animationDuration <= 0) return;
+      const pausedStates = animationActions.map((action) => action.paused);
+      animationActions.forEach((action) => {
+        action.paused = false;
+      });
+      mixer.setTime(THREE.MathUtils.clamp(time, 0, animationDuration));
+      mixer.update(0);
+      animationActions.forEach((action, index) => {
+        action.paused = pausedStates[index] ?? false;
+      });
+      syncAnimationTimeline(true);
+    };
+    setAnimationPlayingRef.current = (playing: boolean) => {
+      animationActions.forEach((action) => {
+        action.paused = !playing;
+      });
+      syncAnimationTimeline(true);
+    };
+
     setBonesVisibilityRef.current = (visible: boolean) => {
       if (skeletonHelper) skeletonHelper.visible = visible;
     };
@@ -453,6 +528,10 @@ export default function App() {
         mixer.uncacheRoot(model);
         mixer = null;
       }
+      animationActions = [];
+      animationDuration = 0;
+      animationClipName = "";
+      setAnimationTimeline(null);
 
       model.traverse((child) => {
         if (child instanceof THREE.SkinnedMesh) {
@@ -664,7 +743,7 @@ export default function App() {
         tracks,
       );
       mixer = new THREE.AnimationMixer(model);
-      mixer.clipAction(importedClip).reset().play();
+      setActiveAnimation(mixer, [importedClip]);
       mixer.update(0);
       discardPendingAnimation();
     };
@@ -688,6 +767,7 @@ export default function App() {
       setBoneSearch("");
       setTreeCommand(null);
       setSelectedBoneId(null);
+      setAnimationTimeline(null);
       selectedBone = null;
       selectionMarker.visible = false;
       showSelectedBoneName = false;
@@ -712,6 +792,9 @@ export default function App() {
             disposeObject(model);
           }
           mixer = null;
+          animationActions = [];
+          animationDuration = 0;
+          animationClipName = "";
           const loader = new FBXLoader();
           model = loader.parse(reader.result as ArrayBuffer, "");
           referenceTransforms = new Map();
@@ -749,11 +832,13 @@ export default function App() {
           }
 
           if (model.animations.length) {
-            mixer = new THREE.AnimationMixer(model);
-            model.animations.forEach((clip) => mixer?.clipAction(clip).play());
+            setActiveAnimation(
+              new THREE.AnimationMixer(model),
+              model.animations,
+            );
           }
 
-          frameModel();
+          frameObject();
           setHasBones(modelHasBones);
           setBoneHierarchy(collectBoneHierarchy(model));
           setBoneCount(modelBoneCount);
@@ -771,7 +856,10 @@ export default function App() {
     const animate = (time: number) => {
       const delta = Math.min((time - lastFrame) / 1000, 0.1);
       lastFrame = time;
-      mixer?.update(delta);
+      if (mixer && animationActions.some((action) => !action.paused)) {
+        mixer.update(delta);
+        syncAnimationTimeline();
+      }
       if (selectedBone) {
         selectedBone.getWorldPosition(selectionMarker.position);
       }
@@ -822,6 +910,67 @@ export default function App() {
   const openFile = useCallback((file?: File) => {
     if (file) loadModelRef.current(file);
   }, []);
+
+  const formatAnimationTime = useCallback((time: number) => {
+    if (!Number.isFinite(time)) return "0:00.00";
+    const minutes = Math.floor(time / 60);
+    const seconds = time - minutes * 60;
+    return `${minutes}:${seconds.toFixed(2).padStart(5, "0")}`;
+  }, []);
+  const animationProgress = animationTimeline
+    ? Math.min(
+        100,
+        Math.max(
+          0,
+          (animationTimeline.time / Math.max(animationTimeline.duration, 0.001)) *
+            100,
+        ),
+      )
+    : 0;
+  const seekAnimationByFrame = useCallback(
+    (direction: -1 | 1) => {
+      if (!animationTimeline) return;
+      const frameDuration = 1 / 30;
+      seekAnimationRef.current(animationTimeline.time + frameDuration * direction);
+    },
+    [animationTimeline],
+  );
+  const seekAnimationFromPointer = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!animationTimeline) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const progress = Math.min(
+        1,
+        Math.max(0, (event.clientX - rect.left) / Math.max(rect.width, 1)),
+      );
+      seekAnimationRef.current(progress * animationTimeline.duration);
+    },
+    [animationTimeline],
+  );
+  const seekAnimationFromKeyboard = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!animationTimeline) return;
+
+      const smallStep = animationTimeline.duration / 200;
+      const largeStep = animationTimeline.duration / 20;
+      const step = event.shiftKey ? largeStep : smallStep;
+
+      if (event.key === "ArrowLeft") {
+        seekAnimationRef.current(animationTimeline.time - step);
+      } else if (event.key === "ArrowRight") {
+        seekAnimationRef.current(animationTimeline.time + step);
+      } else if (event.key === "Home") {
+        seekAnimationRef.current(0);
+      } else if (event.key === "End") {
+        seekAnimationRef.current(animationTimeline.duration);
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+    },
+    [animationTimeline],
+  );
 
   const startPanelResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -939,8 +1088,12 @@ export default function App() {
                 <span className="toggle-indicator" />
                 Bone Name
               </button>
-              <button className="text-button" onClick={() => resetViewRef.current()}>
-                Reset view
+              <button
+                className="text-button"
+                title="Center and fit the object without changing the viewing angle"
+                onClick={() => frameObjectRef.current()}
+              >
+                Frame Object
               </button>
             </>
           )}
@@ -997,6 +1150,88 @@ export default function App() {
                 <span className="status-dot" />
                 <span>{fileName}</span>
               </div>
+              {animationTimeline && (
+                <div className="timeline-control" aria-label="Animation timeline">
+                  <button
+                    className="timeline-play"
+                    type="button"
+                    aria-label={
+                      animationTimeline.isPlaying
+                        ? "Pause animation"
+                        : "Play animation"
+                    }
+                    onClick={() =>
+                      setAnimationPlayingRef.current(
+                        !animationTimeline.isPlaying,
+                      )
+                    }
+                  >
+                    {animationTimeline.isPlaying ? "Pause" : "Play"}
+                  </button>
+                  <div className="timeline-meta">
+                    <span title={animationTimeline.clipName}>
+                      {animationTimeline.clipName}
+                    </span>
+                    <span>
+                      {formatAnimationTime(animationTimeline.time)} /{" "}
+                      {formatAnimationTime(animationTimeline.duration)}
+                    </span>
+                  </div>
+                  <button
+                    className="timeline-step"
+                    type="button"
+                    aria-label="Step back one frame"
+                    title="Step back one frame"
+                    onClick={() => seekAnimationByFrame(-1)}
+                  >
+                    -1f
+                  </button>
+                  <div
+                    id="animation-timeline"
+                    className="timeline-scrubber"
+                    role="slider"
+                    aria-label="Animation time"
+                    aria-valuemin={0}
+                    aria-valuemax={Number(animationTimeline.duration.toFixed(3))}
+                    aria-valuenow={Number(animationTimeline.time.toFixed(3))}
+                    aria-valuetext={`${formatAnimationTime(
+                      animationTimeline.time,
+                    )} of ${formatAnimationTime(animationTimeline.duration)}`}
+                    tabIndex={0}
+                    onPointerDown={(event) => {
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                      setAnimationPlayingRef.current(false);
+                      seekAnimationFromPointer(event);
+                    }}
+                    onPointerMove={(event) => {
+                      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                        seekAnimationFromPointer(event);
+                      }
+                    }}
+                    onKeyDown={seekAnimationFromKeyboard}
+                  >
+                    <span className="timeline-track">
+                      <span
+                        className="timeline-fill"
+                        style={{ width: `${animationProgress}%` }}
+                      />
+                    </span>
+                    <span
+                      className="timeline-thumb"
+                      style={{ left: `${animationProgress}%` }}
+                    />
+                  </div>
+                  <button
+                    className="timeline-step"
+                    type="button"
+                    aria-label="Step forward one frame"
+                    title="Step forward one frame"
+                    onClick={() => seekAnimationByFrame(1)}
+                  >
+                    +1f
+                  </button>
+                </div>
+              )}
               <div className="help">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
             </>
           )}
