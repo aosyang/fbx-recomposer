@@ -51,6 +51,8 @@ type LoadModelOptions = {
 
 type MaterialRenderMode = "material" | "solid";
 
+const MAX_RENDERED_MORPH_TARGETS = 256;
+
 function getTrackBoneName(trackName: string) {
   try {
     const parsed = THREE.PropertyBinding.parseTrackName(trackName);
@@ -862,7 +864,9 @@ export default function App() {
           animationActions = [];
           animationDuration = 0;
           animationClipName = "";
-          const loader = new FBXLoader();
+          const loader = new FBXLoader()
+            .setIncludeMorphTargets(true)
+            .setMaxMorphTargets(MAX_RENDERED_MORPH_TARGETS);
           model = loader.parse(reader.result as ArrayBuffer, "");
           referenceTransforms = new Map();
           model.traverse((child) => {

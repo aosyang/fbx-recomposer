@@ -51,6 +51,7 @@ let fbxTree;
 let connections;
 let sceneGraph;
 let includeMorphTargets;
+let maxMorphTargets;
 
 /**
  * A loader for the FBX format.
@@ -87,12 +88,20 @@ class FBXLoader extends Loader {
 
 		super( manager );
 		this.includeMorphTargets = false;
+		this.maxMorphTargets = Infinity;
 
 	}
 
 	setIncludeMorphTargets( includeMorphTargets ) {
 
 		this.includeMorphTargets = includeMorphTargets;
+		return this;
+
+	}
+
+	setMaxMorphTargets( maxMorphTargets ) {
+
+		this.maxMorphTargets = maxMorphTargets;
 		return this;
 
 	}
@@ -154,6 +163,7 @@ class FBXLoader extends Loader {
 	parse( FBXBuffer, path ) {
 
 		includeMorphTargets = this.includeMorphTargets;
+		maxMorphTargets = this.maxMorphTargets;
 
 		if ( isFbxFormatBinary( FBXBuffer ) ) {
 
@@ -2387,15 +2397,32 @@ class GeometryParser {
 		const morphPreTransform = preTransform.clone().setPosition( 0, 0, 0 );
 
 		const scope = this;
+		const morphVertexMapping = this.getMorphVertexMapping( parentGeoNode );
+		let generatedMorphTargetCount = 0;
+		let displayedMaxMorphTargetsWarning = false;
 		morphTargets.forEach( function ( morphTarget ) {
 
 			morphTarget.rawTargets.forEach( function ( rawTarget ) {
+
+				if ( generatedMorphTargetCount >= maxMorphTargets ) {
+
+					if ( ! displayedMaxMorphTargetsWarning ) {
+
+						console.warn( `THREE.FBXLoader: More than ${ maxMorphTargets } morph targets were found. Extra morph targets were skipped to keep the model renderable.` );
+						displayedMaxMorphTargetsWarning = true;
+
+					}
+
+					return;
+
+				}
 
 				const morphGeoNode = fbxTree.Objects.Geometry[ rawTarget.geoID ];
 
 				if ( morphGeoNode !== undefined ) {
 
-					scope.genMorphGeometry( parentGeo, parentGeoNode, morphGeoNode, morphPreTransform, rawTarget.name );
+					scope.genMorphGeometry( parentGeo, parentGeoNode, morphGeoNode, morphPreTransform, rawTarget.name, morphVertexMapping );
+					generatedMorphTargetCount ++;
 
 				}
 
@@ -2405,20 +2432,92 @@ class GeometryParser {
 
 	}
 
+	getMorphVertexMapping( parentGeoNode ) {
+
+		const basePositions = parentGeoNode.Vertices !== undefined ? parentGeoNode.Vertices.a : [];
+		const baseIndices = parentGeoNode.PolygonVertexIndex !== undefined ? parentGeoNode.PolygonVertexIndex.a : [];
+		const outputVertexIndices = [];
+		let faceVertexIndices = [];
+
+		for ( let i = 0; i < baseIndices.length; i ++ ) {
+
+			let vertexIndex = baseIndices[ i ];
+			let endOfFace = false;
+
+			if ( vertexIndex < 0 ) {
+
+				vertexIndex = vertexIndex ^ - 1;
+				endOfFace = true;
+
+			}
+
+			faceVertexIndices.push( vertexIndex );
+
+			if ( endOfFace ) {
+
+				let triangles;
+
+				if ( faceVertexIndices.length > 3 ) {
+
+					const vertices = [];
+
+					for ( const index of faceVertexIndices ) {
+
+						const offset = index * 3;
+						vertices.push(
+							new Vector3(
+								basePositions[ offset ],
+								basePositions[ offset + 1 ],
+								basePositions[ offset + 2 ]
+							)
+						);
+
+					}
+
+					const { tangent, bitangent } = this.getNormalTangentAndBitangent( vertices );
+					const triangulationInput = [];
+
+					for ( const vertex of vertices ) {
+
+						triangulationInput.push( this.flattenVertex( vertex, tangent, bitangent ) );
+
+					}
+
+					triangles = ShapeUtils.triangulateShape( triangulationInput, [] );
+
+				} else {
+
+					triangles = [[ 0, 1, 2 ]];
+
+				}
+
+				for ( const [ i0, i1, i2 ] of triangles ) {
+
+					outputVertexIndices.push( faceVertexIndices[ i0 ], faceVertexIndices[ i1 ], faceVertexIndices[ i2 ] );
+
+				}
+
+				faceVertexIndices = [];
+
+			}
+
+		}
+
+		return outputVertexIndices;
+
+	}
+
 	// a morph geometry node is similar to a standard  node, and the node is also contained
 	// in FBXTree.Objects.Geometry, however it can only have attributes for position, normal
 	// and a special attribute Index defining which vertices of the original geometry are affected
 	// Normal and position attributes only have data for the vertices that are affected by the morph
-	genMorphGeometry( parentGeo, parentGeoNode, morphGeoNode, preTransform, name ) {
-
-		const basePositions = parentGeoNode.Vertices !== undefined ? parentGeoNode.Vertices.a : [];
-		const baseIndices = parentGeoNode.PolygonVertexIndex !== undefined ? parentGeoNode.PolygonVertexIndex.a : [];
+	genMorphGeometry( parentGeo, parentGeoNode, morphGeoNode, preTransform, name, morphVertexMapping ) {
 
 		const morphPositionsSparse = morphGeoNode.Vertices !== undefined ? morphGeoNode.Vertices.a : [];
 		const morphIndices = morphGeoNode.Indexes !== undefined ? morphGeoNode.Indexes.a : [];
 
-		const length = parentGeo.attributes.position.count * 3;
-		const morphPositions = new Float32Array( length );
+		const controlPointCount = parentGeoNode.Vertices !== undefined ? parentGeoNode.Vertices.a.length / 3 : 0;
+		const morphPositions = new Float32Array( controlPointCount * 3 );
 
 		for ( let i = 0; i < morphIndices.length; i ++ ) {
 
@@ -2430,21 +2529,55 @@ class GeometryParser {
 
 		}
 
-		// TODO: add morph normal support
-		const morphGeoInfo = {
-			vertexIndices: baseIndices,
-			vertexPositions: morphPositions,
-			baseVertexPositions: basePositions
-		};
+		const length = parentGeo.attributes.position.count * 3;
+		const morphBuffer = new Float32Array( length );
 
-		const morphBuffers = this.genBuffers( morphGeoInfo );
+		for ( let i = 0, j = 0; i < morphVertexMapping.length; i ++, j += 3 ) {
 
-		const positionAttribute = new Float32BufferAttribute( morphBuffers.vertex, 3 );
+			const morphIndex = morphVertexMapping[ i ] * 3;
+			morphBuffer[ j ] = morphPositions[ morphIndex ];
+			morphBuffer[ j + 1 ] = morphPositions[ morphIndex + 1 ];
+			morphBuffer[ j + 2 ] = morphPositions[ morphIndex + 2 ];
+
+		}
+
+		this.applyMorphTransform( morphBuffer, preTransform );
+
+		const positionAttribute = new Float32BufferAttribute( morphBuffer, 3 );
 		positionAttribute.name = name || morphGeoNode.attrName;
 
-		positionAttribute.applyMatrix4( preTransform );
-
 		parentGeo.morphAttributes.position.push( positionAttribute );
+
+	}
+
+	applyMorphTransform( morphBuffer, matrix ) {
+
+		const elements = matrix.elements;
+		const n11 = elements[ 0 ], n12 = elements[ 4 ], n13 = elements[ 8 ], n14 = elements[ 12 ];
+		const n21 = elements[ 1 ], n22 = elements[ 5 ], n23 = elements[ 9 ], n24 = elements[ 13 ];
+		const n31 = elements[ 2 ], n32 = elements[ 6 ], n33 = elements[ 10 ], n34 = elements[ 14 ];
+
+		if (
+			n11 === 1 && n12 === 0 && n13 === 0 && n14 === 0 &&
+			n21 === 0 && n22 === 1 && n23 === 0 && n24 === 0 &&
+			n31 === 0 && n32 === 0 && n33 === 1 && n34 === 0
+		) {
+
+			return;
+
+		}
+
+		for ( let i = 0; i < morphBuffer.length; i += 3 ) {
+
+			const x = morphBuffer[ i ];
+			const y = morphBuffer[ i + 1 ];
+			const z = morphBuffer[ i + 2 ];
+
+			morphBuffer[ i ] = n11 * x + n12 * y + n13 * z + n14;
+			morphBuffer[ i + 1 ] = n21 * x + n22 * y + n23 * z + n24;
+			morphBuffer[ i + 2 ] = n31 * x + n32 * y + n33 * z + n34;
+
+		}
 
 	}
 
