@@ -1152,22 +1152,47 @@ export default function App() {
               </div>
               {animationTimeline && (
                 <div className="timeline-control" aria-label="Animation timeline">
-                  <button
-                    className="timeline-play"
-                    type="button"
-                    aria-label={
-                      animationTimeline.isPlaying
-                        ? "Pause animation"
-                        : "Play animation"
-                    }
-                    onClick={() =>
-                      setAnimationPlayingRef.current(
-                        !animationTimeline.isPlaying,
-                      )
-                    }
-                  >
-                    {animationTimeline.isPlaying ? "Pause" : "Play"}
-                  </button>
+                  <div className="timeline-transport">
+                    <button
+                      className="timeline-step timeline-step-back"
+                      type="button"
+                      aria-label="Step back one frame"
+                      title="Step back one frame"
+                      onClick={() => seekAnimationByFrame(-1)}
+                    >
+                      <span className="timeline-step-icon" aria-hidden="true" />
+                    </button>
+                    <button
+                      className="timeline-play"
+                      type="button"
+                      aria-label={
+                        animationTimeline.isPlaying
+                          ? "Pause animation"
+                          : "Play animation"
+                      }
+                      onClick={() =>
+                        setAnimationPlayingRef.current(
+                          !animationTimeline.isPlaying,
+                        )
+                      }
+                    >
+                      <span
+                        className={`timeline-play-icon ${
+                          animationTimeline.isPlaying ? "is-pause" : "is-play"
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    <button
+                      className="timeline-step timeline-step-forward"
+                      type="button"
+                      aria-label="Step forward one frame"
+                      title="Step forward one frame"
+                      onClick={() => seekAnimationByFrame(1)}
+                    >
+                      <span className="timeline-step-icon" aria-hidden="true" />
+                    </button>
+                  </div>
                   <div className="timeline-meta">
                     <span title={animationTimeline.clipName}>
                       {animationTimeline.clipName}
@@ -1177,15 +1202,6 @@ export default function App() {
                       {formatAnimationTime(animationTimeline.duration)}
                     </span>
                   </div>
-                  <button
-                    className="timeline-step"
-                    type="button"
-                    aria-label="Step back one frame"
-                    title="Step back one frame"
-                    onClick={() => seekAnimationByFrame(-1)}
-                  >
-                    -1f
-                  </button>
                   <div
                     id="animation-timeline"
                     className="timeline-scrubber"
@@ -1221,15 +1237,6 @@ export default function App() {
                       style={{ left: `${animationProgress}%` }}
                     />
                   </div>
-                  <button
-                    className="timeline-step"
-                    type="button"
-                    aria-label="Step forward one frame"
-                    title="Step forward one frame"
-                    onClick={() => seekAnimationByFrame(1)}
-                  >
-                    +1f
-                  </button>
                 </div>
               )}
               <div className="help">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
