@@ -1045,11 +1045,12 @@ export default function App() {
             </button>
           </div>
         </div>
-        <div className="actions">
+        <div className="viewport-display" aria-label="Viewport display controls">
           {loadState === "ready" && (
             <>
+              <span className="display-label">Viewport</span>
               <button
-                className={`toggle-button ${showBones ? "is-active" : ""}`}
+                className={`display-toggle ${showBones ? "is-active" : ""}`}
                 aria-pressed={showBones}
                 disabled={!hasBones}
                 title={hasBones ? "Toggle skeleton overlay" : "This model has no bones"}
@@ -1059,17 +1060,16 @@ export default function App() {
                   setBonesVisibilityRef.current(nextValue);
                 }}
               >
-                <span className="toggle-indicator" />
+                <span className="display-check" aria-hidden="true" />
                 Bones
               </button>
               <button
-                className={`toggle-button ${showBoneName ? "is-active" : ""}`}
+                className={`display-toggle ${showBoneName ? "is-active" : ""}`}
                 aria-pressed={showBoneName}
-                disabled={!selectedBoneId}
                 title={
                   selectedBoneId
                     ? "Show the selected bone name in the viewport"
-                    : "Select a bone from the hierarchy first"
+                    : "Show selected bone names when a bone is selected"
                 }
                 onClick={() => {
                   const nextValue = !showBoneName;
@@ -1077,15 +1077,8 @@ export default function App() {
                   setBoneNameVisibilityRef.current(nextValue);
                 }}
               >
-                <span className="toggle-indicator" />
-                Bone Name
-              </button>
-              <button
-                className="text-button"
-                title="Center and fit the object without changing the viewing angle"
-                onClick={() => frameObjectRef.current()}
-              >
-                Frame Object
+                <span className="display-check" aria-hidden="true" />
+                Bone Names
               </button>
             </>
           )}
@@ -1232,17 +1225,29 @@ export default function App() {
                 </div>
               )}
               <div className="help">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
-              {hasBones && !panelOpen && (
+              <div className="viewport-tools">
                 <button
-                  className="hierarchy-reopen"
+                  className="frame-view"
                   type="button"
-                  aria-label="Open bone hierarchy"
-                  title="Open bone hierarchy"
-                  onClick={() => setPanelOpen(true)}
+                  aria-label="Frame object"
+                  title="Center and fit the object without changing the viewing angle"
+                  onClick={() => frameObjectRef.current()}
                 >
                   <span aria-hidden="true" />
+                  Frame
                 </button>
-              )}
+                {hasBones && !panelOpen && (
+                  <button
+                    className="hierarchy-reopen"
+                    type="button"
+                    aria-label="Open bone hierarchy"
+                    title="Open bone hierarchy"
+                    onClick={() => setPanelOpen(true)}
+                  >
+                    <span aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </>
           )}
         </div>
