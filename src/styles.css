@@ -265,22 +265,13 @@ button {
 }
 
 .hierarchy-reopen span {
-  position: relative;
   width: 16px;
   height: 16px;
-  border: 1.5px solid currentColor;
-  border-radius: 3px;
-}
-
-.hierarchy-reopen span::before {
-  position: absolute;
-  top: -1.5px;
-  right: 3px;
-  bottom: -1.5px;
-  width: 1.5px;
-  border-radius: 999px;
   background: currentColor;
-  content: "";
+  mask:
+    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMTYgMTYiPgoJPHBhdGggZD0iTTAgMGgxNnYxNkgweiIgZmlsbD0ibm9uZSIgLz4KCTxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIHN0cm9rZS13aWR0aD0iMS41Ij4KCQk8cmVjdCB3aWR0aD0iMTIuNSIgaGVpZ2h0PSIxMC41IiB4PSIxLjc1IiB5PSIyLjc1IiAvPgoJCTxwYXRoIGQ9Im02LjI1IDN2OS41IiAvPgoJPC9nPgo8L3N2Zz4K")
+    center / contain no-repeat;
+  transform: scaleX(-1);
 }
 
 .drop-card {
@@ -433,6 +424,7 @@ button {
   color: currentColor;
 }
 
+/* Timeline masks use Charm Icons, MIT: https://github.com/jaynewey/charm-icons */
 .timeline-play-icon.is-play {
   background: currentColor;
   mask:
