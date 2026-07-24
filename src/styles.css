@@ -1058,9 +1058,60 @@ button {
   line-height: 1.5;
 }
 
-.drop-choice-actions {
+.drop-choice-options {
   display: grid;
   padding: 0 18px;
+  gap: 8px;
+}
+
+.drop-choice-option {
+  display: grid;
+  min-height: 42px;
+  padding: 7px 10px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  border: 1px solid #333941;
+  border-radius: 8px;
+  color: #d4dade;
+  background: #202428;
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.drop-choice-option-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.drop-choice-option-copy small {
+  color: #88919a;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.drop-choice-option:has(input:checked) {
+  border-color: rgba(126, 242, 154, 0.5);
+  color: #c9ffd6;
+  background: rgba(126, 242, 154, 0.12);
+}
+
+.drop-choice-option:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.drop-choice-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #7ef29a;
+}
+
+.drop-choice-actions {
+  display: grid;
+  padding: 14px 18px 18px;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
@@ -1070,10 +1121,6 @@ button {
   margin: 10px 0 16px;
   color: #7f8890;
   font-size: 10px;
-}
-
-.drop-choice-dialog:not(:has(.drop-choice-hint)) .drop-choice-actions {
-  padding-bottom: 18px;
 }
 
 .import-dialog {

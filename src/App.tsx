@@ -35,6 +35,20 @@ type AnimationTimeline = {
   isPlaying: boolean;
 };
 
+type DropChoice = {
+  file: File;
+  status: "analyzing" | "ready" | "error";
+  hasModel: boolean;
+  hasAnimation: boolean;
+  replaceModel: boolean;
+  importAnimation: boolean;
+  error?: string;
+};
+
+type LoadModelOptions = {
+  importEmbeddedAnimation?: boolean;
+};
+
 function getTrackBoneName(trackName: string) {
   try {
     const parsed = THREE.PropertyBinding.parseTrackName(trackName);
@@ -278,7 +292,9 @@ export default function App() {
   );
   const inputRef = useRef<HTMLInputElement>(null);
   const animationInputRef = useRef<HTMLInputElement>(null);
-  const loadModelRef = useRef<(file: File) => void>(() => undefined);
+  const loadModelRef = useRef(
+    (_file: File, _options?: LoadModelOptions) => undefined,
+  );
   const loadAnimationRef = useRef<(file: File) => void>(() => undefined);
   const selectAnimationClipRef = useRef<(index: number) => void>(
     () => undefined,
@@ -319,7 +335,7 @@ export default function App() {
     useState<AnimationTimeline | null>(null);
   const [mappingDetailsOpen, setMappingDetailsOpen] = useState(false);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
-  const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const [dropChoice, setDropChoice] = useState<DropChoice | null>(null);
   const normalizedBoneSearch = boneSearch.trim().toLowerCase();
   const filteredBoneHierarchy = useMemo(
     () => filterBoneHierarchy(boneHierarchy, normalizedBoneSearch),
@@ -756,7 +772,9 @@ export default function App() {
       discardPendingAnimation();
     };
 
-    loadModelRef.current = (file: File) => {
+    loadModelRef.current = (file: File, options?: LoadModelOptions) => {
+      const importEmbeddedAnimation = options?.importEmbeddedAnimation ?? true;
+
       if (!file.name.toLowerCase().endsWith(".fbx")) {
         setLoadState("error");
         setMessage("Please choose a .fbx file");
@@ -839,7 +857,7 @@ export default function App() {
             scene.add(skeletonHelper);
           }
 
-          if (model.animations.length) {
+          if (importEmbeddedAnimation && model.animations.length) {
             setActiveAnimation(
               new THREE.AnimationMixer(model),
               model.animations,
@@ -915,8 +933,83 @@ export default function App() {
     };
   }, []);
 
-  const openFile = useCallback((file?: File) => {
-    if (file) loadModelRef.current(file);
+  const openFile = useCallback((file?: File, options?: LoadModelOptions) => {
+    if (file) loadModelRef.current(file, options);
+  }, []);
+
+  const analyzeDroppedFile = useCallback((file: File) => {
+    if (!file.name.toLowerCase().endsWith(".fbx")) {
+      setDropChoice({
+        file,
+        status: "error",
+        hasModel: false,
+        hasAnimation: false,
+        replaceModel: false,
+        importAnimation: false,
+        error: "Please drop a .fbx file.",
+      });
+      return;
+    }
+
+    setDropChoice({
+      file,
+      status: "analyzing",
+      hasModel: false,
+      hasAnimation: false,
+      replaceModel: false,
+      importAnimation: false,
+    });
+
+    const reader = new FileReader();
+    reader.onerror = () => {
+      setDropChoice((current) =>
+        current?.file === file
+          ? {
+              ...current,
+              status: "error",
+              error: "Could not read this FBX.",
+            }
+          : current,
+      );
+    };
+    reader.onload = () => {
+      try {
+        const source = new FBXLoader().parse(reader.result as ArrayBuffer, "");
+        let hasModel = false;
+        source.traverse((child) => {
+          if (child instanceof THREE.Mesh) hasModel = true;
+        });
+        const hasAnimation = source.animations.length > 0;
+
+        setDropChoice((current) =>
+          current?.file === file
+            ? {
+                file,
+                status: "ready",
+                hasModel,
+                hasAnimation,
+                replaceModel: hasModel,
+                importAnimation: hasAnimation,
+                error: hasModel || hasAnimation
+                  ? undefined
+                  : "This FBX does not contain a model or animation clips.",
+              }
+            : current,
+        );
+        disposeObject(source);
+      } catch {
+        setDropChoice((current) =>
+          current?.file === file
+            ? {
+                ...current,
+                status: "error",
+                error: "This FBX could not be parsed.",
+              }
+            : current,
+        );
+      }
+    };
+    reader.readAsArrayBuffer(file);
   }, []);
 
   const formatAnimationTime = useCallback((time: number) => {
@@ -1026,6 +1119,15 @@ export default function App() {
   const totalAnimatedBoneCount = matchedBoneCount + unmatchedBoneCount;
   const unmatchedRootCount = animationImport?.unmatchedRootNodes.length ?? 0;
   const hasMappingIssues = unmatchedBoneCount + unmatchedRootCount > 0;
+  const dropCanImportAnimation = Boolean(
+    dropChoice?.hasAnimation &&
+      (dropChoice.replaceModel || (loadState === "ready" && hasBones)),
+  );
+  const dropCanApplyChoice = Boolean(
+    dropChoice?.status === "ready" &&
+      ((dropChoice.replaceModel && dropChoice.hasModel) ||
+        (dropChoice.importAnimation && dropCanImportAnimation)),
+  );
 
   return (
     <main className="app-shell">
@@ -1140,11 +1242,7 @@ export default function App() {
           setIsDragging(false);
           const file = event.dataTransfer.files[0];
           if (!file) return;
-          if (file.name.toLowerCase().endsWith(".fbx")) {
-            setDroppedFile(file);
-          } else {
-            openFile(file);
-          }
+          analyzeDroppedFile(file);
         }}
       >
         <div className="viewport-stage">
@@ -1440,7 +1538,7 @@ export default function App() {
         />
       </section>
 
-      {droppedFile && (
+      {dropChoice && (
         <div className="import-backdrop">
           <section
             className="drop-choice-dialog"
@@ -1451,53 +1549,111 @@ export default function App() {
           >
             <div className="drop-choice-header">
               <div>
-                <h2 id="drop-choice-title">How should this FBX be opened?</h2>
-                <p>{droppedFile.name}</p>
+                <h2 id="drop-choice-title">Choose how to use this FBX</h2>
+                <p>{dropChoice.file.name}</p>
               </div>
               <button
                 className="close-panel"
                 aria-label="Cancel"
-                onClick={() => setDroppedFile(null)}
+                onClick={() => setDropChoice(null)}
               >
                 ×
               </button>
             </div>
-            <p id="drop-choice-description" className="drop-choice-description">
-              Open it as a new model, or import its animation onto the current model.
-            </p>
+            {dropChoice.status === "analyzing" ? (
+              <p id="drop-choice-description" className="drop-choice-description">
+                Inspecting FBX contents...
+              </p>
+            ) : (
+              <div
+                id="drop-choice-description"
+                className="drop-choice-options"
+              >
+                <label className="drop-choice-option">
+                  <input
+                    type="checkbox"
+                    checked={dropChoice.replaceModel}
+                    disabled={!dropChoice.hasModel}
+                    onChange={(event) => {
+                      const replaceModel = event.target.checked;
+                      setDropChoice((current) =>
+                        current
+                          ? {
+                              ...current,
+                              replaceModel,
+                              importAnimation: replaceModel
+                                ? current.importAnimation
+                                : current.importAnimation &&
+                                  loadState === "ready" &&
+                                  hasBones,
+                            }
+                          : current,
+                      );
+                    }}
+                  />
+                  <span className="drop-choice-option-copy">
+                    <span>Replace current model</span>
+                    {!dropChoice.hasModel && (
+                      <small>No model mesh found</small>
+                    )}
+                  </span>
+                </label>
+                <label className="drop-choice-option">
+                  <input
+                    type="checkbox"
+                    checked={dropChoice.importAnimation}
+                    disabled={!dropCanImportAnimation}
+                    onChange={(event) =>
+                      setDropChoice((current) =>
+                        current
+                          ? {
+                              ...current,
+                              importAnimation: event.target.checked,
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                  <span className="drop-choice-option-copy">
+                    <span>Import animations</span>
+                    {dropChoice.hasAnimation ? (
+                      !dropCanImportAnimation && (
+                        <small>Open a rigged model first</small>
+                      )
+                    ) : (
+                      <small>No animation clips found</small>
+                    )}
+                  </span>
+                </label>
+              </div>
+            )}
+            {dropChoice.error ? (
+              <p className="drop-choice-hint">{dropChoice.error}</p>
+            ) : null}
             <div className="drop-choice-actions">
               <button
                 className="primary-button"
+                disabled={!dropCanApplyChoice}
                 onClick={() => {
-                  const file = droppedFile;
-                  setDroppedFile(null);
-                  openFile(file);
+                  if (!dropChoice) return;
+                  const { file, replaceModel, importAnimation } = dropChoice;
+                  setDropChoice(null);
+                  if (replaceModel) {
+                    openFile(file, { importEmbeddedAnimation: importAnimation });
+                    return;
+                  }
+                  if (importAnimation) loadAnimationRef.current(file);
                 }}
               >
-                Open as Model
+                Continue
               </button>
               <button
                 className="secondary-button"
-                disabled={loadState !== "ready" || !hasBones}
-                title={
-                  hasBones
-                    ? "Import exact-name bone animation"
-                    : "Open a rigged model before importing animation"
-                }
-                onClick={() => {
-                  const file = droppedFile;
-                  setDroppedFile(null);
-                  loadAnimationRef.current(file);
-                }}
+                onClick={() => setDropChoice(null)}
               >
-                Import as Animation
+                Cancel
               </button>
             </div>
-            {(loadState !== "ready" || !hasBones) && (
-              <p className="drop-choice-hint">
-                Import as Animation requires a rigged model to be open first.
-              </p>
-            )}
           </section>
         </div>
       )}
