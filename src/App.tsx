@@ -49,6 +49,8 @@ type LoadModelOptions = {
   importEmbeddedAnimation?: boolean;
 };
 
+type MaterialRenderMode = "material" | "solid";
+
 function getTrackBoneName(trackName: string) {
   try {
     const parsed = THREE.PropertyBinding.parseTrackName(trackName);
@@ -315,6 +317,9 @@ export default function App() {
   const setBoneNameVisibilityRef = useRef<(visible: boolean) => void>(
     () => undefined,
   );
+  const setMaterialRenderModeRef = useRef<(mode: MaterialRenderMode) => void>(
+    () => undefined,
+  );
   const [loadState, setLoadState] = useState<LoadState>("empty");
   const [fileName, setFileName] = useState("");
   const [message, setMessage] = useState("Drop an FBX file here");
@@ -322,6 +327,8 @@ export default function App() {
   const [hasBones, setHasBones] = useState(false);
   const [showBones, setShowBones] = useState(false);
   const [showBoneName, setShowBoneName] = useState(false);
+  const [materialRenderMode, setMaterialRenderMode] =
+    useState<MaterialRenderMode>("material");
   const [boneHierarchy, setBoneHierarchy] = useState<BoneNode[]>([]);
   const [boneCount, setBoneCount] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -422,6 +429,14 @@ export default function App() {
     let animationLoadVersion = 0;
     let lastFrame = performance.now();
     let frameId = 0;
+    let activeMaterialRenderMode: MaterialRenderMode = "material";
+    const originalMeshMaterials = new Map<
+      THREE.Mesh,
+      THREE.Material | THREE.Material[]
+    >();
+    const solidMaterial = new THREE.MeshLambertMaterial({
+      color: 0xd8dde1,
+    });
 
     const resize = () => {
       const { clientWidth, clientHeight } = viewport;
@@ -513,6 +528,30 @@ export default function App() {
     setBoneNameVisibilityRef.current = (visible: boolean) => {
       showSelectedBoneName = visible;
       boneLabel.hidden = !visible || !selectedBone;
+    };
+    const restoreOriginalMaterials = (object: THREE.Object3D) => {
+      object.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const originalMaterial = originalMeshMaterials.get(child);
+        if (originalMaterial) child.material = originalMaterial;
+      });
+    };
+    const applyMaterialRenderMode = () => {
+      if (!model) return;
+      model.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        if (!originalMeshMaterials.has(child)) {
+          originalMeshMaterials.set(child, child.material);
+        }
+        child.material =
+          activeMaterialRenderMode === "solid"
+            ? solidMaterial
+            : originalMeshMaterials.get(child) ?? child.material;
+      });
+    };
+    setMaterialRenderModeRef.current = (mode: MaterialRenderMode) => {
+      activeMaterialRenderMode = mode;
+      applyMaterialRenderMode();
     };
     selectBoneRef.current = (boneId: string) => {
       if (!model) return;
@@ -814,8 +853,10 @@ export default function App() {
             skeletonHelper = null;
           }
           if (model) {
+            restoreOriginalMaterials(model);
             scene.remove(model);
             disposeObject(model);
+            originalMeshMaterials.clear();
           }
           mixer = null;
           animationActions = [];
@@ -839,10 +880,12 @@ export default function App() {
               modelBoneCount += 1;
             }
             if (child instanceof THREE.Mesh) {
+              originalMeshMaterials.set(child, child.material);
               child.castShadow = true;
               child.receiveShadow = true;
             }
           });
+          applyMaterialRenderMode();
           scene.add(model);
 
           if (modelHasBones) {
@@ -921,7 +964,11 @@ export default function App() {
         disposeSkeletonHelper(skeletonHelper);
       }
       if (pendingAnimationSource) disposeObject(pendingAnimationSource);
-      if (model) disposeObject(model);
+      if (model) {
+        restoreOriginalMaterials(model);
+        disposeObject(model);
+      }
+      solidMaterial.dispose();
       selectionMarker.geometry.dispose();
       if (Array.isArray(selectionMarker.material)) {
         selectionMarker.material.forEach((material) => material.dispose());
@@ -1217,6 +1264,38 @@ export default function App() {
                   >
                     <span className="display-check" aria-hidden="true" />
                     Bone Names
+                  </button>
+                  <div className="display-menu-separator" role="separator" />
+                  <div className="display-menu-label">Material</div>
+                  <button
+                    className={`display-menu-item ${
+                      materialRenderMode === "material" ? "is-active" : ""
+                    }`}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={materialRenderMode === "material"}
+                    onClick={() => {
+                      setMaterialRenderMode("material");
+                      setMaterialRenderModeRef.current("material");
+                    }}
+                  >
+                    <span className="display-radio" aria-hidden="true" />
+                    Original Materials
+                  </button>
+                  <button
+                    className={`display-menu-item ${
+                      materialRenderMode === "solid" ? "is-active" : ""
+                    }`}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={materialRenderMode === "solid"}
+                    onClick={() => {
+                      setMaterialRenderMode("solid");
+                      setMaterialRenderModeRef.current("solid");
+                    }}
+                  >
+                    <span className="display-radio" aria-hidden="true" />
+                    Solid Color
                   </button>
                 </div>
               )}
