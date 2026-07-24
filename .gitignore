@@ -3,6 +3,8 @@ dist/
 .vite/
 .vinext/
 .wrangler/
+.tmp-profile/
+.vs/
 *.tsbuildinfo
 *.local
 *.log
