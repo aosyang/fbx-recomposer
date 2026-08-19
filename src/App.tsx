@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { FBXLoader } from "./loaders/FastFBXLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TGALoader } from "three/examples/jsm/loaders/TGALoader.js";
+import { unzipSync } from "three/examples/jsm/libs/fflate.module.js";
 
 type LoadState = "empty" | "loading" | "ready" | "error";
 
@@ -47,11 +49,161 @@ type DropChoice = {
 
 type LoadModelOptions = {
   importEmbeddedAnimation?: boolean;
+  resources?: File[];
 };
 
 type MaterialRenderMode = "material" | "solid";
 
 const MAX_RENDERED_MORPH_TARGETS = 256;
+const FBX_RESOURCE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".bmp",
+  ".tga",
+]);
+
+type BrowserResourceFile = File & {
+  webkitRelativePath?: string;
+  resourcePath?: string;
+};
+
+function normalizeResourcePath(value: string) {
+  let normalized = value;
+  try {
+    normalized = decodeURIComponent(normalized);
+  } catch {
+    // Keep the original value if an exporter wrote malformed URL escapes.
+  }
+
+  normalized = normalized
+    .split(/[?#]/, 1)[0]
+    .replace(/\\/g, "/")
+    .replace(/^file:\/\//i, "")
+    .replace(/^[a-z]:\//i, "")
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "");
+
+  return normalized.toLowerCase();
+}
+
+function resourceBasename(value: string) {
+  const normalized = normalizeResourcePath(value);
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || normalized;
+}
+
+function getResourceMimeType(path: string) {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".bmp")) return "image/bmp";
+  if (lower.endsWith(".tga")) return "image/x-tga";
+  return "application/octet-stream";
+}
+
+async function expandResourceArchives(files: File[]) {
+  const expanded: File[] = [];
+
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      expanded.push(file);
+      continue;
+    }
+
+    const archive = unzipSync(new Uint8Array(await file.arrayBuffer()));
+    Object.entries(archive).forEach(([path, bytes]) => {
+      const dot = path.lastIndexOf(".");
+      if (dot < 0 || !FBX_RESOURCE_EXTENSIONS.has(path.slice(dot).toLowerCase())) return;
+      const extracted = new File([bytes], resourceBasename(path), {
+        type: getResourceMimeType(path),
+      }) as BrowserResourceFile;
+      Object.defineProperty(extracted, "resourcePath", {
+        configurable: false,
+        enumerable: false,
+        value: path,
+      });
+      expanded.push(extracted);
+    });
+  }
+
+  return expanded;
+}
+
+function createBrowserResourceManager(files: File[]) {
+  const manager = new THREE.LoadingManager();
+  const resourceFiles = files.filter((file) => {
+    const dot = file.name.lastIndexOf(".");
+    return dot >= 0 && FBX_RESOURCE_EXTENSIONS.has(file.name.slice(dot).toLowerCase());
+  });
+  const byPath = new Map<string, File>();
+  const ambiguousBasenames = new Set<string>();
+  const objectUrls = new Map<File, string>();
+  const resolved = new Set<string>();
+  const missing = new Set<string>();
+
+  const register = (key: string, file: File) => {
+    const normalized = normalizeResourcePath(key);
+    if (!normalized) return;
+    const existing = byPath.get(normalized);
+    if (existing && existing !== file) {
+      byPath.delete(normalized);
+      if (!normalized.includes("/")) ambiguousBasenames.add(normalized);
+      return;
+    }
+    if (!ambiguousBasenames.has(normalized)) byPath.set(normalized, file);
+  };
+
+  resourceFiles.forEach((file) => {
+    const browserFile = file as BrowserResourceFile;
+    register(browserFile.resourcePath || browserFile.webkitRelativePath || file.name, file);
+    register(file.name, file);
+  });
+
+  manager.setURLModifier((url) => {
+    if (/^(?:blob:|data:|https?:)/i.test(url)) return url;
+
+    const normalized = normalizeResourcePath(url);
+    const basename = resourceBasename(normalized);
+    const file = byPath.get(normalized) ?? byPath.get(basename);
+    if (!file) {
+      missing.add(url);
+      return url;
+    }
+
+    let objectUrl = objectUrls.get(file);
+    if (!objectUrl) {
+      objectUrl = URL.createObjectURL(file);
+      objectUrls.set(file, objectUrl);
+    }
+    resolved.add(file.name);
+    return objectUrl;
+  });
+
+  manager.addHandler(/\.tga$/i, new TGALoader(manager));
+  manager.onError = (url) => {
+    console.warn(`[FBX Viewer] Texture resource failed to load: ${url}`);
+  };
+  manager.onLoad = () => {
+    if (resourceFiles.length > 0 || missing.size > 0) {
+      console.info("[FBX Viewer] Texture resources", {
+        supplied: resourceFiles.length,
+        resolved: [...resolved],
+        unresolvedRequests: [...missing],
+      });
+    }
+  };
+
+  return {
+    manager,
+    release: () => {
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+      objectUrls.clear();
+    },
+  };
+}
 
 function getTrackBoneName(trackName: string) {
   try {
@@ -448,6 +600,7 @@ export default function App() {
     scene.add(selectionMarker);
 
     let model: THREE.Group | null = null;
+    let releaseModelResources: () => void = () => {};
     let mixer: THREE.AnimationMixer | null = null;
     let animationActions: THREE.AnimationAction[] = [];
     let animationDuration = 0;
@@ -930,6 +1083,7 @@ export default function App() {
 
     loadModelRef.current = (file: File, options?: LoadModelOptions) => {
       const importEmbeddedAnimation = options?.importEmbeddedAnimation ?? true;
+      const resources = options?.resources ?? [];
 
       if (!file.name.toLowerCase().endsWith(".fbx")) {
         setLoadState("error");
@@ -981,7 +1135,10 @@ export default function App() {
           animationDuration = 0;
           animationClipName = "";
           animationFrameBounds = null;
-          const loader = new FBXLoader()
+          releaseModelResources();
+          const localResources = createBrowserResourceManager(resources);
+          releaseModelResources = localResources.release;
+          const loader = new FBXLoader(localResources.manager)
             .setIncludeMorphTargets(true)
             .setMaxMorphTargets(MAX_RENDERED_MORPH_TARGETS);
           model = loader.parse(reader.result as ArrayBuffer, "");
@@ -1098,6 +1255,7 @@ export default function App() {
         restoreOriginalMaterials(model);
         disposeObject(model);
       }
+      releaseModelResources();
       solidMaterial.dispose();
       selectionMarker.geometry.dispose();
       if (Array.isArray(selectionMarker.material)) {
@@ -1113,6 +1271,29 @@ export default function App() {
   const openFile = useCallback((file?: File, options?: LoadModelOptions) => {
     if (file) loadModelRef.current(file, options);
   }, []);
+
+  const openFileSelection = useCallback(async (files?: FileList | File[]) => {
+    if (!files?.length) return;
+    const selected = Array.from(files);
+    const fbx = selected.find((file) => file.name.toLowerCase().endsWith(".fbx"));
+    if (!fbx) {
+      setLoadState("error");
+      setMessage("Choose an FBX file together with any texture resources");
+      return;
+    }
+
+    try {
+      const resources = await expandResourceArchives(
+        selected.filter((file) => file !== fbx),
+      );
+      openFile(fbx, { resources });
+    } catch (error) {
+      const detail = getErrorDetail(error);
+      console.error(`[FBX Viewer] Resource archive failed: ${detail}`, error);
+      setLoadState("error");
+      setMessage(`Texture archive failed: ${detail}`);
+    }
+  }, [openFile]);
 
   const analyzeDroppedFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".fbx")) {
@@ -1450,9 +1631,13 @@ export default function App() {
         onDrop={(event) => {
           event.preventDefault();
           setIsDragging(false);
-          const file = event.dataTransfer.files[0];
-          if (!file) return;
-          analyzeDroppedFile(file);
+          const droppedFiles = Array.from(event.dataTransfer.files);
+          if (droppedFiles.length === 0) return;
+          if (droppedFiles.length > 1) {
+            openFileSelection(droppedFiles);
+            return;
+          }
+          analyzeDroppedFile(droppedFiles[0]);
         }}
       >
         <div className="viewport-stage">
@@ -1729,9 +1914,10 @@ export default function App() {
           ref={inputRef}
           className="visually-hidden"
           type="file"
-          accept=".fbx"
+          accept=".fbx,.png,.jpg,.jpeg,.webp,.bmp,.tga,.zip"
+          multiple
           onChange={(event) => {
-            openFile(event.target.files?.[0]);
+            openFileSelection(event.target.files ?? undefined);
             event.currentTarget.value = "";
           }}
         />
