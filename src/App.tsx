@@ -268,10 +268,14 @@ function disposeSkeletonHelper(helper: THREE.SkeletonHelper) {
   getSkeletonMaterials(helper).forEach((material) => material.dispose());
 }
 
-function getBoundsIncludingBones(object: THREE.Object3D) {
-  object.updateWorldMatrix(true, true);
+function getErrorDetail(error: unknown) {
+  if (error instanceof Error) return error.message || error.name;
+  return String(error);
+}
 
-  const bounds = new THREE.Box3().setFromObject(object, true);
+function getBoneWorldBounds(object: THREE.Object3D) {
+  object.updateWorldMatrix(true, true);
+  const bounds = new THREE.Box3();
   const worldPosition = new THREE.Vector3();
 
   object.traverse((child) => {
@@ -281,8 +285,17 @@ function getBoundsIncludingBones(object: THREE.Object3D) {
     }
   });
 
+  return bounds;
+}
+
+function getBoundsIncludingBones(object: THREE.Object3D) {
+  object.updateWorldMatrix(true, true);
+
+  const bounds = new THREE.Box3().setFromObject(object, false);
+  bounds.union(getBoneWorldBounds(object));
+
   if (bounds.isEmpty()) {
-    bounds.expandByPoint(object.getWorldPosition(worldPosition));
+    bounds.expandByPoint(object.getWorldPosition(new THREE.Vector3()));
   }
 
   return bounds;
@@ -303,7 +316,7 @@ function getAnimationFrameTimes(clips: THREE.AnimationClip[]) {
   });
 
   const inferredFrameStep = Number.isFinite(smallestStep) ? smallestStep : 1 / 30;
-  const maxSamples = 2400;
+  const maxSamples = 900;
   const sampleCount = Math.max(
     1,
     Math.min(maxSamples, Math.ceil(duration / inferredFrameStep)),
@@ -483,25 +496,54 @@ export default function App() {
         paused: action.paused,
         enabled: action.enabled,
       }));
-      const bounds = new THREE.Box3();
 
-      getAnimationFrameTimes(clips).forEach((time) => {
-        mixer!.setTime(time);
-        model!.updateWorldMatrix(true, true);
-        bounds.union(getBoundsIncludingBones(model!));
-      });
+      try {
+        model.updateWorldMatrix(true, true);
+        const staticBounds = new THREE.Box3().setFromObject(model, false);
+        const initialBoneBounds = getBoneWorldBounds(model);
+        const animatedBoneBounds = new THREE.Box3();
 
-      mixer.setTime(savedMixerTime);
-      animationActions.forEach((action, index) => {
-        const saved = savedActions[index];
-        if (!saved) return;
-        action.time = saved.time;
-        action.paused = saved.paused;
-        action.enabled = saved.enabled;
-      });
-      mixer.update(0);
+        getAnimationFrameTimes(clips).forEach((time) => {
+          mixer!.setTime(time);
+          model!.updateWorldMatrix(true, true);
+          animatedBoneBounds.union(getBoneWorldBounds(model!));
+        });
 
-      return bounds.isEmpty() ? null : bounds;
+        if (animatedBoneBounds.isEmpty()) {
+          return staticBounds.isEmpty() ? null : staticBounds;
+        }
+
+        const bounds = animatedBoneBounds.clone();
+        if (!staticBounds.isEmpty() && !initialBoneBounds.isEmpty()) {
+          const minMargin = new THREE.Vector3(
+            Math.max(0, initialBoneBounds.min.x - staticBounds.min.x),
+            Math.max(0, initialBoneBounds.min.y - staticBounds.min.y),
+            Math.max(0, initialBoneBounds.min.z - staticBounds.min.z),
+          );
+          const maxMargin = new THREE.Vector3(
+            Math.max(0, staticBounds.max.x - initialBoneBounds.max.x),
+            Math.max(0, staticBounds.max.y - initialBoneBounds.max.y),
+            Math.max(0, staticBounds.max.z - initialBoneBounds.max.z),
+          );
+          bounds.min.sub(minMargin);
+          bounds.max.add(maxMargin);
+        }
+
+        const padding = bounds.getSize(new THREE.Vector3()).multiplyScalar(0.04);
+        bounds.min.sub(padding);
+        bounds.max.add(padding);
+        return bounds.isEmpty() ? null : bounds;
+      } finally {
+        mixer.setTime(savedMixerTime);
+        animationActions.forEach((action, index) => {
+          const saved = savedActions[index];
+          if (!saved) return;
+          action.time = saved.time;
+          action.paused = saved.paused;
+          action.enabled = saved.enabled;
+        });
+        model.updateWorldMatrix(true, true);
+      }
     };
 
     const frameObject = () => {
@@ -559,7 +601,15 @@ export default function App() {
           ? clips[0].name || "Animation"
           : `${clips.length} animations`;
       nextMixer.update(0);
-      animationFrameBounds = sampleAnimationBounds(clips);
+      try {
+        animationFrameBounds = sampleAnimationBounds(clips);
+      } catch (error) {
+        animationFrameBounds = null;
+        console.warn(
+          `[FBX Viewer] Animation framing failed; falling back to current pose: ${getErrorDetail(error)}`,
+          error,
+        );
+      }
       syncAnimationTimeline(true);
       frameObject();
     };
@@ -800,7 +850,11 @@ export default function App() {
           }
 
           buildAnimationPreview(0);
-        } catch {
+        } catch (error) {
+          console.error(
+            `[FBX Viewer] Animation FBX parse failed: ${getErrorDetail(error)}`,
+            error,
+          );
           setAnimationImport({
             fileName: file.name,
             clips: [],
@@ -909,6 +963,7 @@ export default function App() {
         setMessage("Could not read this file");
       };
       reader.onload = () => {
+        let loadStage = "FBX parsing";
         try {
           if (skeletonHelper) {
             scene.remove(skeletonHelper);
@@ -930,6 +985,7 @@ export default function App() {
             .setIncludeMorphTargets(true)
             .setMaxMorphTargets(MAX_RENDERED_MORPH_TARGETS);
           model = loader.parse(reader.result as ArrayBuffer, "");
+          loadStage = "model scene setup";
           referenceTransforms = new Map();
           model.traverse((child) => {
             referenceTransforms.set(child.uuid, {
@@ -970,6 +1026,7 @@ export default function App() {
           }
 
           if (importEmbeddedAnimation && model.animations.length) {
+            loadStage = "embedded animation setup";
             setActiveAnimation(
               new THREE.AnimationMixer(model),
               model.animations,
@@ -985,9 +1042,11 @@ export default function App() {
           );
           setLoadState("ready");
           setMessage("Model ready");
-        } catch {
+        } catch (error) {
+          const detail = getErrorDetail(error);
+          console.error(`[FBX Viewer] ${loadStage} failed: ${detail}`, error);
           setLoadState("error");
-          setMessage("This FBX could not be parsed");
+          setMessage(`${loadStage} failed: ${detail}`);
         }
       };
       reader.readAsArrayBuffer(file);
@@ -1115,13 +1174,14 @@ export default function App() {
             : current,
         );
         disposeObject(source);
-      } catch {
+      } catch (error) {
+        console.error(`[FBX Viewer] FBX analysis failed: ${getErrorDetail(error)}`, error);
         setDropChoice((current) =>
           current?.file === file
             ? {
                 ...current,
                 status: "error",
-                error: "This FBX could not be parsed.",
+                error: `FBX analysis failed: ${getErrorDetail(error)}`,
               }
             : current,
         );
