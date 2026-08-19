@@ -52,6 +52,11 @@ type LoadModelOptions = {
   resources?: File[];
 };
 
+type AssetFolderChoice = {
+  candidates: File[];
+  selectedFiles: File[];
+};
+
 type MaterialRenderMode = "material" | "solid";
 
 const MAX_RENDERED_MORPH_TARGETS = 256;
@@ -637,6 +642,8 @@ export default function App() {
   const [mappingDetailsOpen, setMappingDetailsOpen] = useState(false);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
   const [dropChoice, setDropChoice] = useState<DropChoice | null>(null);
+  const [assetFolderChoice, setAssetFolderChoice] =
+    useState<AssetFolderChoice | null>(null);
   const normalizedBoneSearch = boneSearch.trim().toLowerCase();
   const filteredBoneHierarchy = useMemo(
     () => filterBoneHierarchy(boneHierarchy, normalizedBoneSearch),
@@ -1402,36 +1409,10 @@ export default function App() {
     }
   }, [openModelFile]);
 
-  const openAssetFolderSelection = useCallback(async (files?: FileList | File[]) => {
-    if (!files?.length) return;
-    const selected = Array.from(files);
-    const fbxFiles = selected.filter((file) => file.name.toLowerCase().endsWith(".fbx"));
-    if (fbxFiles.length === 0) {
-      setLoadState("error");
-      setMessage("No FBX file found in the selected asset folder");
-      return;
-    }
-
-    const ranked = fbxFiles
-      .map((file) => ({
-        file,
-        depth: normalizeResourcePath((file as BrowserResourceFile).webkitRelativePath || file.name)
-          .split("/")
-          .filter(Boolean).length,
-      }))
-      .sort((a, b) => a.depth - b.depth || a.file.name.localeCompare(b.file.name));
-    const shallowestDepth = ranked[0].depth;
-    const shallowest = ranked.filter((candidate) => candidate.depth === shallowestDepth);
-    if (shallowest.length !== 1) {
-      setLoadState("error");
-      setMessage("Multiple top-level FBX files found; choose a more specific asset folder");
-      return;
-    }
-
+  const loadAssetFolderModel = useCallback(async (modelFile: File, selected: File[]) => {
     try {
-      const modelFile = shallowest[0].file;
       const resources = await expandResourceArchives(
-        selected.filter((file) => file !== modelFile),
+        selected.filter((file) => !file.name.toLowerCase().endsWith(".fbx")),
       );
       openModelFile(modelFile, { resources });
     } catch (error) {
@@ -1441,6 +1422,31 @@ export default function App() {
       setMessage(`Asset folder failed: ${detail}`);
     }
   }, [openModelFile]);
+
+  const openAssetFolderSelection = useCallback((files?: FileList | File[]) => {
+    if (!files?.length) return;
+    const selected = Array.from(files);
+    const fbxFiles = selected
+      .filter((file) => file.name.toLowerCase().endsWith(".fbx"))
+      .sort((a, b) => {
+        const aPath = (a as BrowserResourceFile).webkitRelativePath || a.name;
+        const bPath = (b as BrowserResourceFile).webkitRelativePath || b.name;
+        return aPath.localeCompare(bPath);
+      });
+
+    if (fbxFiles.length === 0) {
+      setLoadState("error");
+      setMessage("No FBX file found in the selected asset folder");
+      return;
+    }
+
+    if (fbxFiles.length === 1) {
+      void loadAssetFolderModel(fbxFiles[0], selected);
+      return;
+    }
+
+    setAssetFolderChoice({ candidates: fbxFiles, selectedFiles: selected });
+  }, [loadAssetFolderModel]);
 
   const analyzeDroppedFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".fbx")) {
@@ -2083,6 +2089,53 @@ export default function App() {
             </div>
             </aside>
           </>
+        )}
+
+        {assetFolderChoice && (
+          <div className="asset-model-picker-backdrop">
+            <section
+              className="asset-model-picker"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="asset-model-picker-title"
+            >
+              <div className="asset-model-picker-header">
+                <div>
+                  <h2 id="asset-model-picker-title">Choose FBX</h2>
+                  <p>{assetFolderChoice.candidates.length} FBX files found in this folder</p>
+                </div>
+                <button
+                  type="button"
+                  className="asset-model-picker-close"
+                  aria-label="Cancel model selection"
+                  onClick={() => setAssetFolderChoice(null)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="asset-model-picker-list">
+                {assetFolderChoice.candidates.map((file, index) => {
+                  const relativePath =
+                    (file as BrowserResourceFile).webkitRelativePath || file.name;
+                  return (
+                    <button
+                      key={`${relativePath}-${index}`}
+                      type="button"
+                      className="asset-model-picker-item"
+                      onClick={() => {
+                        const selectedFiles = assetFolderChoice.selectedFiles;
+                        setAssetFolderChoice(null);
+                        void loadAssetFolderModel(file, selectedFiles);
+                      }}
+                    >
+                      <span className="asset-model-picker-name">{file.name}</span>
+                      <span className="asset-model-picker-path">{relativePath}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
         )}
 
         <input
