@@ -1559,6 +1559,8 @@ button {
     min-width: 34px;
     padding: 0;
     grid-template-columns: 16px;
+    justify-content: center;
+    gap: 0;
   }
 
   .frame-view {
