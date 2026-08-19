@@ -144,53 +144,136 @@ async function expandResourceArchives(files: File[]) {
   return expanded;
 }
 
+function getDirectoryParts(value: string) {
+  const normalized = normalizeResourcePath(value);
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.slice(0, -1);
+}
+
+function pathSegmentEditDistance(a: string[], b: string[]) {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 0; i < a.length; i += 1) {
+    const current = [i + 1];
+    for (let j = 0; j < b.length; j += 1) {
+      current.push(Math.min(
+        current[j] + 1,
+        previous[j + 1] + 1,
+        previous[j] + Number(a[i] !== b[j]),
+      ));
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[b.length];
+}
+
+function commonDirectorySuffixLength(a: string[], b: string[]) {
+  let count = 0;
+  while (
+    count < a.length &&
+    count < b.length &&
+    a[a.length - 1 - count] === b[b.length - 1 - count]
+  ) {
+    count += 1;
+  }
+  return count;
+}
+
 function createBrowserResourceManager(files: File[]) {
   const manager = new THREE.LoadingManager();
   const resourceFiles = files.filter((file) => {
     const dot = file.name.lastIndexOf(".");
     return dot >= 0 && FBX_RESOURCE_EXTENSIONS.has(file.name.slice(dot).toLowerCase());
   });
-  const byPath = new Map<string, File>();
-  const ambiguousBasenames = new Set<string>();
-  const objectUrls = new Map<File, string>();
-  const resolved = new Set<string>();
-  const missing = new Set<string>();
-
-  const register = (key: string, file: File) => {
-    const normalized = normalizeResourcePath(key);
-    if (!normalized) return;
-    const existing = byPath.get(normalized);
-    if (existing && existing !== file) {
-      byPath.delete(normalized);
-      if (!normalized.includes("/")) ambiguousBasenames.add(normalized);
-      return;
-    }
-    if (!ambiguousBasenames.has(normalized)) byPath.set(normalized, file);
-  };
-
-  resourceFiles.forEach((file) => {
+  const resources = resourceFiles.map((file) => {
     const browserFile = file as BrowserResourceFile;
-    register(browserFile.resourcePath || browserFile.webkitRelativePath || file.name, file);
-    register(file.name, file);
+    const path = normalizeResourcePath(
+      browserFile.resourcePath || browserFile.webkitRelativePath || file.name,
+    );
+    return {
+      file,
+      path,
+      basename: resourceBasename(path),
+      directories: getDirectoryParts(path),
+    };
   });
+  const byExactPath = new Map<string, typeof resources>();
+  const byBasename = new Map<string, typeof resources>();
+  const objectUrls = new Map<File, string>();
+  const resolutionLog: Array<{
+    request: string;
+    status: "exact" | "recovered" | "ambiguous" | "missing";
+    resolvedPath?: string;
+  }> = [];
+
+  const addIndex = (map: Map<string, typeof resources>, key: string, entry: typeof resources[number]) => {
+    const bucket = map.get(key) ?? [];
+    bucket.push(entry);
+    map.set(key, bucket);
+  };
+  resources.forEach((entry) => {
+    addIndex(byExactPath, entry.path, entry);
+    addIndex(byBasename, entry.basename, entry);
+  });
+
+  const resolveResource = (url: string) => {
+    const requestPath = normalizeResourcePath(url);
+    const requestBasename = resourceBasename(requestPath);
+    const exact = byExactPath.get(requestPath) ?? [];
+    if (exact.length === 1) {
+      resolutionLog.push({ request: url, status: "exact", resolvedPath: exact[0].path });
+      return exact[0].file;
+    }
+    if (exact.length > 1) {
+      resolutionLog.push({ request: url, status: "ambiguous" });
+      return null;
+    }
+
+    const sameName = byBasename.get(requestBasename) ?? [];
+    if (sameName.length === 0) {
+      resolutionLog.push({ request: url, status: "missing" });
+      return null;
+    }
+    if (sameName.length === 1) {
+      resolutionLog.push({ request: url, status: "recovered", resolvedPath: sameName[0].path });
+      return sameName[0].file;
+    }
+
+    const requestDirectories = getDirectoryParts(requestPath);
+    const ranked = sameName
+      .map((entry) => ({
+        entry,
+        commonSuffix: commonDirectorySuffixLength(requestDirectories, entry.directories),
+        editDistance: pathSegmentEditDistance(requestDirectories, entry.directories),
+      }))
+      .sort((a, b) =>
+        b.commonSuffix - a.commonSuffix ||
+        a.editDistance - b.editDistance ||
+        a.entry.path.localeCompare(b.entry.path),
+      );
+    const best = ranked[0];
+    const tied = ranked.filter((candidate) =>
+      candidate.commonSuffix === best.commonSuffix &&
+      candidate.editDistance === best.editDistance,
+    );
+    if (tied.length !== 1) {
+      resolutionLog.push({ request: url, status: "ambiguous" });
+      return null;
+    }
+
+    resolutionLog.push({ request: url, status: "recovered", resolvedPath: best.entry.path });
+    return best.entry.file;
+  };
 
   manager.setURLModifier((url) => {
     if (/^(?:blob:|data:|https?:)/i.test(url)) return url;
-
-    const normalized = normalizeResourcePath(url);
-    const basename = resourceBasename(normalized);
-    const file = byPath.get(normalized) ?? byPath.get(basename);
-    if (!file) {
-      missing.add(url);
-      return getMissingTextureFallback(url);
-    }
+    const file = resolveResource(url);
+    if (!file) return getMissingTextureFallback(url);
 
     let objectUrl = objectUrls.get(file);
     if (!objectUrl) {
       objectUrl = URL.createObjectURL(file);
       objectUrls.set(file, objectUrl);
     }
-    resolved.add(file.name);
     return objectUrl;
   });
 
@@ -199,11 +282,15 @@ function createBrowserResourceManager(files: File[]) {
     console.warn(`[FBX Viewer] Texture resource failed to load: ${url}`);
   };
   manager.onLoad = () => {
-    if (resourceFiles.length > 0 || missing.size > 0) {
-      console.info("[FBX Viewer] Texture resources", {
+    if (resourceFiles.length > 0 || resolutionLog.length > 0) {
+      const counts = resolutionLog.reduce<Record<string, number>>((result, item) => {
+        result[item.status] = (result[item.status] ?? 0) + 1;
+        return result;
+      }, {});
+      console.info("[FBX Viewer] Texture resource matching", {
         supplied: resourceFiles.length,
-        resolved: [...resolved],
-        unresolvedRequests: [...missing],
+        counts,
+        resolutions: resolutionLog,
       });
     }
   };
@@ -498,7 +585,7 @@ export default function App() {
     null,
   );
   const inputRef = useRef<HTMLInputElement>(null);
-  const resourceInputRef = useRef<HTMLInputElement>(null);
+  const assetFolderInputRef = useRef<HTMLInputElement>(null);
   const animationInputRef = useRef<HTMLInputElement>(null);
   const currentModelFileRef = useRef<File | null>(null);
   const loadModelRef = useRef(
@@ -1315,25 +1402,45 @@ export default function App() {
     }
   }, [openModelFile]);
 
-  const loadResourceSelection = useCallback(async (files?: FileList | File[]) => {
+  const openAssetFolderSelection = useCallback(async (files?: FileList | File[]) => {
     if (!files?.length) return;
-    const modelFile = currentModelFileRef.current;
-    if (!modelFile) {
+    const selected = Array.from(files);
+    const fbxFiles = selected.filter((file) => file.name.toLowerCase().endsWith(".fbx"));
+    if (fbxFiles.length === 0) {
       setLoadState("error");
-      setMessage("Open an FBX before loading texture resources");
+      setMessage("No FBX file found in the selected asset folder");
+      return;
+    }
+
+    const ranked = fbxFiles
+      .map((file) => ({
+        file,
+        depth: normalizeResourcePath((file as BrowserResourceFile).webkitRelativePath || file.name)
+          .split("/")
+          .filter(Boolean).length,
+      }))
+      .sort((a, b) => a.depth - b.depth || a.file.name.localeCompare(b.file.name));
+    const shallowestDepth = ranked[0].depth;
+    const shallowest = ranked.filter((candidate) => candidate.depth === shallowestDepth);
+    if (shallowest.length !== 1) {
+      setLoadState("error");
+      setMessage("Multiple top-level FBX files found; choose a more specific asset folder");
       return;
     }
 
     try {
-      const resources = await expandResourceArchives(Array.from(files));
-      openFile(modelFile, { resources });
+      const modelFile = shallowest[0].file;
+      const resources = await expandResourceArchives(
+        selected.filter((file) => file !== modelFile),
+      );
+      openModelFile(modelFile, { resources });
     } catch (error) {
       const detail = getErrorDetail(error);
-      console.error(`[FBX Viewer] Resource archive failed: ${detail}`, error);
+      console.error(`[FBX Viewer] Asset folder load failed: ${detail}`, error);
       setLoadState("error");
-      setMessage(`Texture archive failed: ${detail}`);
+      setMessage(`Asset folder failed: ${detail}`);
     }
-  }, [openFile]);
+  }, [openModelFile]);
 
   const analyzeDroppedFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".fbx")) {
@@ -1537,20 +1644,15 @@ export default function App() {
             <span>FBX Viewer</span>
           </a>
           <div className="file-actions">
-            <button className="primary-button" onClick={() => inputRef.current?.click()}>
-              Open FBX
-            </button>
             <button
-              className="secondary-button"
-              disabled={loadState !== "ready"}
-              title={
-                loadState === "ready"
-                  ? "Load PNG/JPG/TGA textures or an .fbm ZIP for the current FBX"
-                  : "Open an FBX before loading texture resources"
-              }
-              onClick={() => resourceInputRef.current?.click()}
+              className="primary-button"
+              onClick={() => assetFolderInputRef.current?.click()}
+              title="Choose one asset folder; FBX textures are matched automatically"
             >
-              Resources
+              Open Asset Folder
+            </button>
+            <button className="secondary-button" onClick={() => inputRef.current?.click()}>
+              Open FBX
             </button>
             <button
               className="secondary-button"
@@ -1973,13 +2075,13 @@ export default function App() {
           }}
         />
         <input
-          ref={resourceInputRef}
+          ref={assetFolderInputRef}
           className="visually-hidden"
           type="file"
-          accept=".png,.jpg,.jpeg,.webp,.bmp,.tga,.zip"
           multiple
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
           onChange={(event) => {
-            loadResourceSelection(event.target.files ?? undefined);
+            openAssetFolderSelection(event.target.files ?? undefined);
             event.currentTarget.value = "";
           }}
         />
