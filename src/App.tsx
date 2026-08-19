@@ -1644,28 +1644,49 @@ export default function App() {
             <span>FBX Viewer</span>
           </a>
           <div className="file-actions">
-            <button
-              className="primary-button"
-              onClick={() => assetFolderInputRef.current?.click()}
-              title="Choose one asset folder; FBX textures are matched automatically"
-            >
-              Open Asset Folder
-            </button>
-            <button className="secondary-button" onClick={() => inputRef.current?.click()}>
-              Open FBX
-            </button>
-            <button
-              className="secondary-button"
-              disabled={loadState !== "ready" || !hasBones}
-              title={
-                hasBones
-                  ? "Import exact-name bone animation from another FBX"
-                  : "Open a rigged FBX before importing animation"
-              }
-              onClick={() => animationInputRef.current?.click()}
-            >
-              Import Animation
-            </button>
+            <details className="open-model-menu">
+              <summary className="primary-button open-model-trigger">Open</summary>
+              <div className="open-model-menu-panel">
+                <button
+                  type="button"
+                  className="open-model-menu-item"
+                  onClick={(event) => {
+                    assetFolderInputRef.current?.click();
+                    const details = event.currentTarget.closest("details");
+                    if (details instanceof HTMLDetailsElement) details.open = false;
+                  }}
+                >
+                  <span className="open-model-menu-title">
+                    Asset Folder
+                    <span className="open-model-menu-badge">Recommended</span>
+                  </span>
+                  <span className="open-model-menu-description">
+                    FBX + textures, matched automatically
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="open-model-menu-item"
+                  onClick={(event) => {
+                    inputRef.current?.click();
+                    const details = event.currentTarget.closest("details");
+                    if (details instanceof HTMLDetailsElement) details.open = false;
+                  }}
+                >
+                  <span className="open-model-menu-title">FBX File</span>
+                  <span className="open-model-menu-description">Single FBX file</span>
+                </button>
+              </div>
+            </details>
+            {loadState === "ready" && hasBones && (
+              <button
+                className="secondary-button"
+                title="Import an animation FBX onto the current skeleton"
+                onClick={() => animationInputRef.current?.click()}
+              >
+                Import Animation
+              </button>
+            )}
           </div>
         </div>
         <div className="viewport-display" aria-label="Viewport display controls">
