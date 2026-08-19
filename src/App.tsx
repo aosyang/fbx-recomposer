@@ -288,6 +288,32 @@ function getBoundsIncludingBones(object: THREE.Object3D) {
   return bounds;
 }
 
+function getAnimationFrameTimes(clips: THREE.AnimationClip[]) {
+  const duration = Math.max(...clips.map((clip) => clip.duration), 0);
+  if (duration <= 0) return [0];
+
+  let smallestStep = Number.POSITIVE_INFINITY;
+  clips.forEach((clip) => {
+    clip.tracks.forEach((track) => {
+      for (let index = 1; index < track.times.length; index += 1) {
+        const step = track.times[index] - track.times[index - 1];
+        if (step > 1e-6) smallestStep = Math.min(smallestStep, step);
+      }
+    });
+  });
+
+  const inferredFrameStep = Number.isFinite(smallestStep) ? smallestStep : 1 / 30;
+  const maxSamples = 2400;
+  const sampleCount = Math.max(
+    1,
+    Math.min(maxSamples, Math.ceil(duration / inferredFrameStep)),
+  );
+  return Array.from(
+    { length: sampleCount + 1 },
+    (_, index) => (duration * index) / sampleCount,
+  );
+}
+
 export default function App() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const boneLabelRef = useRef<HTMLDivElement>(null);
@@ -413,6 +439,7 @@ export default function App() {
     let animationActions: THREE.AnimationAction[] = [];
     let animationDuration = 0;
     let animationClipName = "";
+    let animationFrameBounds: THREE.Box3 | null = null;
     let lastTimelineUpdate = 0;
     let skeletonHelper: THREE.SkeletonHelper | null = null;
     let selectedBone: THREE.Bone | null = null;
@@ -447,9 +474,39 @@ export default function App() {
       camera.updateProjectionMatrix();
     };
 
+    const sampleAnimationBounds = (clips: THREE.AnimationClip[]) => {
+      if (!model || !mixer || clips.length === 0) return null;
+
+      const savedMixerTime = mixer.time;
+      const savedActions = animationActions.map((action) => ({
+        time: action.time,
+        paused: action.paused,
+        enabled: action.enabled,
+      }));
+      const bounds = new THREE.Box3();
+
+      getAnimationFrameTimes(clips).forEach((time) => {
+        mixer!.setTime(time);
+        model!.updateWorldMatrix(true, true);
+        bounds.union(getBoundsIncludingBones(model!));
+      });
+
+      mixer.setTime(savedMixerTime);
+      animationActions.forEach((action, index) => {
+        const saved = savedActions[index];
+        if (!saved) return;
+        action.time = saved.time;
+        action.paused = saved.paused;
+        action.enabled = saved.enabled;
+      });
+      mixer.update(0);
+
+      return bounds.isEmpty() ? null : bounds;
+    };
+
     const frameObject = () => {
       if (!model) return;
-      const box = getBoundsIncludingBones(model);
+      const box = animationFrameBounds?.clone() ?? getBoundsIncludingBones(model);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       const radius = Math.max(size.length() * 0.5, 0.1);
@@ -501,7 +558,10 @@ export default function App() {
         clips.length === 1
           ? clips[0].name || "Animation"
           : `${clips.length} animations`;
+      nextMixer.update(0);
+      animationFrameBounds = sampleAnimationBounds(clips);
       syncAnimationTimeline(true);
+      frameObject();
     };
 
     seekAnimationRef.current = (time: number) => {
@@ -596,6 +656,7 @@ export default function App() {
       animationActions = [];
       animationDuration = 0;
       animationClipName = "";
+      animationFrameBounds = null;
       setAnimationTimeline(null);
 
       model.traverse((child) => {
@@ -864,6 +925,7 @@ export default function App() {
           animationActions = [];
           animationDuration = 0;
           animationClipName = "";
+          animationFrameBounds = null;
           const loader = new FBXLoader()
             .setIncludeMorphTargets(true)
             .setMaxMorphTargets(MAX_RENDERED_MORPH_TARGETS);
@@ -877,6 +939,7 @@ export default function App() {
             });
           });
           let modelHasBones = false;
+          let modelHasMesh = false;
           let modelBoneCount = 0;
           model.traverse((child) => {
             if (child instanceof THREE.Bone) {
@@ -884,6 +947,7 @@ export default function App() {
               modelBoneCount += 1;
             }
             if (child instanceof THREE.Mesh) {
+              modelHasMesh = true;
               originalMeshMaterials.set(child, child.material);
               child.castShadow = true;
               child.receiveShadow = true;
@@ -894,7 +958,7 @@ export default function App() {
 
           if (modelHasBones) {
             skeletonHelper = new THREE.SkeletonHelper(model);
-            skeletonHelper.visible = false;
+            skeletonHelper.visible = !modelHasMesh;
             getSkeletonMaterials(skeletonHelper).forEach((material) => {
               material.depthTest = false;
               material.transparent = true;
@@ -902,6 +966,7 @@ export default function App() {
             });
             skeletonHelper.renderOrder = 999;
             scene.add(skeletonHelper);
+            setShowBones(!modelHasMesh);
           }
 
           if (importEmbeddedAnimation && model.animations.length) {
@@ -915,7 +980,9 @@ export default function App() {
           setHasBones(modelHasBones);
           setBoneHierarchy(collectBoneHierarchy(model));
           setBoneCount(modelBoneCount);
-          setPanelOpen(modelHasBones);
+          setPanelOpen(
+            modelHasBones && !window.matchMedia("(max-width: 640px)").matches,
+          );
           setLoadState("ready");
           setMessage("Model ready");
         } catch {
