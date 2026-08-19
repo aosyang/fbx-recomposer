@@ -486,7 +486,9 @@ export default function App() {
     null,
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const resourceInputRef = useRef<HTMLInputElement>(null);
   const animationInputRef = useRef<HTMLInputElement>(null);
+  const currentModelFileRef = useRef<File | null>(null);
   const loadModelRef = useRef(
     (_file: File, _options?: LoadModelOptions) => undefined,
   );
@@ -1272,6 +1274,12 @@ export default function App() {
     if (file) loadModelRef.current(file, options);
   }, []);
 
+  const openModelFile = useCallback((file?: File, options?: LoadModelOptions) => {
+    if (!file) return;
+    currentModelFileRef.current = file;
+    openFile(file, options);
+  }, [openFile]);
+
   const openFileSelection = useCallback(async (files?: FileList | File[]) => {
     if (!files?.length) return;
     const selected = Array.from(files);
@@ -1286,7 +1294,27 @@ export default function App() {
       const resources = await expandResourceArchives(
         selected.filter((file) => file !== fbx),
       );
-      openFile(fbx, { resources });
+      openModelFile(fbx, { resources });
+    } catch (error) {
+      const detail = getErrorDetail(error);
+      console.error(`[FBX Viewer] Resource archive failed: ${detail}`, error);
+      setLoadState("error");
+      setMessage(`Texture archive failed: ${detail}`);
+    }
+  }, [openModelFile]);
+
+  const loadResourceSelection = useCallback(async (files?: FileList | File[]) => {
+    if (!files?.length) return;
+    const modelFile = currentModelFileRef.current;
+    if (!modelFile) {
+      setLoadState("error");
+      setMessage("Open an FBX before loading texture resources");
+      return;
+    }
+
+    try {
+      const resources = await expandResourceArchives(Array.from(files));
+      openFile(modelFile, { resources });
     } catch (error) {
       const detail = getErrorDetail(error);
       console.error(`[FBX Viewer] Resource archive failed: ${detail}`, error);
@@ -1499,6 +1527,18 @@ export default function App() {
           <div className="file-actions">
             <button className="primary-button" onClick={() => inputRef.current?.click()}>
               Open FBX
+            </button>
+            <button
+              className="secondary-button"
+              disabled={loadState !== "ready"}
+              title={
+                loadState === "ready"
+                  ? "Load PNG/JPG/TGA textures or an .fbm ZIP for the current FBX"
+                  : "Open an FBX before loading texture resources"
+              }
+              onClick={() => resourceInputRef.current?.click()}
+            >
+              Resources
             </button>
             <button
               className="secondary-button"
@@ -1914,10 +1954,20 @@ export default function App() {
           ref={inputRef}
           className="visually-hidden"
           type="file"
-          accept=".fbx,.png,.jpg,.jpeg,.webp,.bmp,.tga,.zip"
+          accept=".fbx"
+          onChange={(event) => {
+            openModelFile(event.target.files?.[0]);
+            event.currentTarget.value = "";
+          }}
+        />
+        <input
+          ref={resourceInputRef}
+          className="visually-hidden"
+          type="file"
+          accept=".png,.jpg,.jpeg,.webp,.bmp,.tga,.zip"
           multiple
           onChange={(event) => {
-            openFileSelection(event.target.files ?? undefined);
+            loadResourceSelection(event.target.files ?? undefined);
             event.currentTarget.value = "";
           }}
         />
@@ -2035,7 +2085,7 @@ export default function App() {
                   const { file, replaceModel, importAnimation } = dropChoice;
                   setDropChoice(null);
                   if (replaceModel) {
-                    openFile(file, { importEmbeddedAnimation: importAnimation });
+                    openModelFile(file, { importEmbeddedAnimation: importAnimation });
                     return;
                   }
                   if (importAnimation) loadAnimationRef.current(file);
