@@ -94,6 +94,18 @@ function resourceBasename(value: string) {
   return parts[parts.length - 1] || normalized;
 }
 
+function getMissingTextureFallback(url: string) {
+  const name = resourceBasename(url);
+  const color = /(?:normal|_n(?:\.|_|$))/i.test(name)
+    ? "#8080ff"
+    : /(?:specular|spec|_s(?:\.|_|$))/i.test(name)
+      ? "#000000"
+      : "#ffffff";
+  return `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="${color}"/></svg>`,
+  )}`;
+}
+
 function getResourceMimeType(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".png")) return "image/png";
@@ -170,7 +182,7 @@ function createBrowserResourceManager(files: File[]) {
     const file = byPath.get(normalized) ?? byPath.get(basename);
     if (!file) {
       missing.add(url);
-      return url;
+      return getMissingTextureFallback(url);
     }
 
     let objectUrl = objectUrls.get(file);
