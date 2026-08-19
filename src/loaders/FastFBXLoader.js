@@ -3875,7 +3875,14 @@ class BinaryParser {
 		while ( ! this.endOfContent( reader ) ) {
 
 			const node = this.parseNode( reader, version );
-			if ( node !== null ) allNodes.add( node.name, node );
+
+			// The top-level FBX NULL record is the authoritative end of the
+			// node stream. Some exporters append a footer whose byte count does
+			// not match the heuristic in endOfContent(), so continuing past this
+			// record can make footer bytes look like a bogus node/property.
+			if ( node === null ) break;
+
+			allNodes.add( node.name, node );
 
 		}
 
@@ -4079,6 +4086,8 @@ class BinaryParser {
 
 	parseProperty( reader ) {
 
+		const typeOffset = reader.getOffset();
+		const typeCode = reader.dv.getUint8( typeOffset );
 		const type = reader.getString( 1 );
 		let length;
 
@@ -4170,8 +4179,10 @@ class BinaryParser {
 
 				break; // cannot happen but is required by the DeepScan
 
-			default:
-				throw new Error( 'THREE.FBXLoader: Unknown property type ' + type );
+			default: {
+				const typeLabel = type || ( '0x' + typeCode.toString( 16 ).padStart( 2, '0' ) );
+				throw new Error( 'THREE.FBXLoader: Unknown property type ' + typeLabel + ' at byte ' + typeOffset );
+			}
 
 		}
 
