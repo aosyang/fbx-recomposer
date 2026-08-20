@@ -2171,7 +2171,8 @@ export default function App() {
           type="file"
           accept=".fbx"
           onChange={(event) => {
-            openModelFile(event.target.files?.[0]);
+            const file = event.target.files?.[0];
+            if (file) void routeFbxFile(file);
             event.currentTarget.value = "";
           }}
         />
