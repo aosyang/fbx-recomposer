@@ -637,6 +637,10 @@ export default function App() {
   const [displayMenuOpen, setDisplayMenuOpen] = useState(false);
   const [animationImport, setAnimationImport] =
     useState<AnimationImportPreview | null>(null);
+  const [animationModelAlternative, setAnimationModelAlternative] = useState<{
+    file: File;
+    resources: File[];
+  } | null>(null);
   const [animationTimeline, setAnimationTimeline] =
     useState<AnimationTimeline | null>(null);
   const [mappingDetailsOpen, setMappingDetailsOpen] = useState(false);
@@ -1403,6 +1407,7 @@ export default function App() {
     }
 
     setDropChoice(null);
+    setAnimationModelAlternative(null);
     try {
       const source = new FBXLoader().parse(await file.arrayBuffer(), "");
       let hasModel = false;
@@ -1426,10 +1431,23 @@ export default function App() {
         return;
       }
 
-      const hasCurrentModel = loadState === "ready";
+      const hasCurrentModel = currentModelFileRef.current !== null;
       const canImportAnimation = hasCurrentModel && hasBones;
 
+      // Context wins over incidental FBX contents: once a rigged model is open,
+      // any animation-bearing FBX is treated as an animation source first.
+      // This is the safety invariant that prevents a Mixamo-style animation FBX
+      // with an embedded/reference mesh from silently replacing the current model.
+      if (hasAnimation && canImportAnimation) {
+        setAnimationModelAlternative(hasModel ? { file, resources } : null);
+        loadAnimationRef.current(file);
+        return;
+      }
+
       if (hasModel && hasAnimation && hasCurrentModel) {
+        // A current model exists but cannot accept animation (for example, it has
+        // no skeleton). Preserve it and require an explicit replacement decision.
+        setAnimationModelAlternative(null);
         setDropChoice({
           file,
           status: "ready",
@@ -1438,20 +1456,17 @@ export default function App() {
           replaceModel: false,
           importAnimation: false,
           resources,
+          error: "The current model cannot accept animation from this FBX.",
         });
         return;
       }
 
       if (hasModel) {
+        setAnimationModelAlternative(null);
         openModelFile(file, {
           resources,
           importEmbeddedAnimation: hasAnimation,
         });
-        return;
-      }
-
-      if (hasAnimation && canImportAnimation) {
-        loadAnimationRef.current(file);
         return;
       }
 
@@ -2302,7 +2317,10 @@ export default function App() {
               <button
                 className="close-panel"
                 aria-label="Cancel animation import"
-                onClick={() => cancelAnimationImportRef.current()}
+                onClick={() => {
+                  setAnimationModelAlternative(null);
+                  cancelAnimationImportRef.current();
+                }}
               >
                 ×
               </button>
@@ -2491,12 +2509,29 @@ export default function App() {
                   Boolean(animationImport.error) ||
                   animationImport.matchedTrackCount === 0
                 }
-                onClick={() =>
-                  applyAnimationRef.current(animationImport.selectedClipIndex)
-                }
+                onClick={() => {
+                  setAnimationModelAlternative(null);
+                  applyAnimationRef.current(animationImport.selectedClipIndex);
+                }}
               >
                 Import &amp; Play
               </button>
+              {animationModelAlternative && (
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    const alternative = animationModelAlternative;
+                    setAnimationModelAlternative(null);
+                    cancelAnimationImportRef.current();
+                    openModelFile(alternative.file, {
+                      resources: alternative.resources,
+                      importEmbeddedAnimation: true,
+                    });
+                  }}
+                >
+                  Open as Model Instead
+                </button>
+              )}
             </div>
           </section>
         </div>
