@@ -1845,3 +1845,66 @@ button {
     border-radius: 1rem;
   }
 }
+
+
+/* Mobile viewport layout fixes */
+/* Keep the loaded-file identity in the visible canvas corner instead of below the timeline. */
+.file-pill {
+  top: 18px;
+  bottom: auto;
+}
+
+/* Reserve renderer height for the timeline so framing and orbiting use only unobscured canvas space. */
+.viewport-stage.has-timeline .viewport {
+  bottom: 132px;
+}
+
+.timeline-control {
+  bottom: 18px;
+}
+
+@media (max-width: 640px) {
+  /* The Open menu is viewport-bound on phones rather than anchored past the right edge of Open. */
+  .open-model-menu-panel {
+    position: fixed;
+    top: 72px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-width: none;
+  }
+
+  /* Keep the frame-camera glyph optically centered in the compact square button. */
+  .frame-view {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    padding: 0;
+    gap: 0;
+    line-height: 0;
+  }
+
+  .frame-view span {
+    display: block;
+    flex: 0 0 15px;
+    margin: 0;
+  }
+
+  .file-pill {
+    top: 10px;
+    bottom: auto;
+    left: 10px;
+    max-width: calc(100% - 112px);
+  }
+
+  .timeline-control {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+  }
+
+  .viewport-stage.has-timeline .viewport {
+    bottom: 122px;
+  }
+}

@@ -1821,7 +1821,7 @@ export default function App() {
           analyzeDroppedFile(droppedFiles[0]);
         }}
       >
-        <div className="viewport-stage">
+        <div className={`viewport-stage ${animationTimeline ? "has-timeline" : ""}`}> 
           <div ref={viewportRef} className="viewport" />
           <div ref={boneLabelRef} className="selected-bone-label" hidden />
 
