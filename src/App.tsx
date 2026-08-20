@@ -7,6 +7,12 @@ import {
   writeBinaryFbx,
   type BinaryFbxDocument,
 } from "./lib/binary-fbx";
+import {
+  analyzeFbxExportContents,
+  buildFbxExportDocument,
+  type FbxExportAvailability,
+  type FbxExportSelection,
+} from "./lib/fbx-export";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TGALoader } from "three/examples/jsm/loaders/TGALoader.js";
 import { unzipSync } from "three/examples/jsm/libs/fflate.module.js";
@@ -612,7 +618,7 @@ export default function App() {
   const cancelAnimationImportRef = useRef<() => void>(() => undefined);
   const selectBoneRef = useRef<(boneId: string) => void>(() => undefined);
   const frameObjectRef = useRef<() => void>(() => undefined);
-  const saveFbxRef = useRef<() => void>(() => undefined);
+  const saveFbxRef = useRef<(selection: FbxExportSelection) => void>(() => undefined);
   const seekAnimationRef = useRef<(time: number) => void>(() => undefined);
   const setAnimationPlayingRef = useRef<(playing: boolean) => void>(
     () => undefined,
@@ -628,7 +634,9 @@ export default function App() {
   );
   const [loadState, setLoadState] = useState<LoadState>("empty");
   const [fileName, setFileName] = useState("");
-  const [canSaveFbx, setCanSaveFbx] = useState(false);
+  const [exportAvailability, setExportAvailability] =
+    useState<FbxExportAvailability>({ character: false, animation: false });
+  const [saveDialog, setSaveDialog] = useState<FbxExportSelection | null>(null);
   const [message, setMessage] = useState("Drop an FBX file here");
   const [isDragging, setIsDragging] = useState(false);
   const [hasBones, setHasBones] = useState(false);
@@ -743,6 +751,10 @@ export default function App() {
     >();
     let pendingAnimationSource: THREE.Group | null = null;
     let pendingAnimationFileName = "";
+    let pendingAnimationBinaryDocument: BinaryFbxDocument | null = null;
+    let activeAnimationBinaryDocument: BinaryFbxDocument | null = null;
+    let activeAnimationFileName = "";
+    let externalAnimationApplied = false;
     let animationLoadVersion = 0;
     let lastFrame = performance.now();
     let frameId = 0;
@@ -755,17 +767,33 @@ export default function App() {
       color: 0xd8dde1,
     });
 
-    saveFbxRef.current = () => {
-      if (!loadedBinaryDocument) return;
-
+    saveFbxRef.current = (selection: FbxExportSelection) => {
       try {
-        const output = writeBinaryFbx(loadedBinaryDocument);
+        const animationDocument = externalAnimationApplied
+          ? activeAnimationBinaryDocument
+          : null;
+        const exportDocument = buildFbxExportDocument(
+          loadedBinaryDocument,
+          animationDocument,
+          selection,
+        );
+        const output = writeBinaryFbx(exportDocument);
         const blob = new Blob([output], { type: "application/octet-stream" });
         const url = URL.createObjectURL(blob);
-        const baseName = loadedBinaryFileName.toLowerCase().endsWith(".fbx")
-          ? loadedBinaryFileName.slice(0, -4)
-          : loadedBinaryFileName || "model";
-        const downloadName = `${baseName}_saved.fbx`;
+        const stem = (name: string, fallback: string) => {
+          const source = name || fallback;
+          return source.toLowerCase().endsWith(".fbx") ? source.slice(0, -4) : source;
+        };
+        const characterStem = stem(loadedBinaryFileName, "character");
+        const animationStem = stem(
+          activeAnimationFileName || loadedBinaryFileName,
+          "animation",
+        );
+        const downloadName = selection.character && selection.animation
+          ? `${characterStem}_with_animation.fbx`
+          : selection.character
+            ? `${characterStem}_character.fbx`
+            : `${animationStem}_animation.fbx`;
         const link = document.createElement("a");
         link.href = url;
         link.download = downloadName;
@@ -994,6 +1022,7 @@ export default function App() {
         pendingAnimationSource = null;
       }
       pendingAnimationFileName = "";
+      pendingAnimationBinaryDocument = null;
       setAnimationImport(null);
     };
 
@@ -1130,10 +1159,16 @@ export default function App() {
       reader.onload = () => {
         if (loadVersion !== animationLoadVersion) return;
         try {
-          pendingAnimationSource = new FBXLoader().parse(
-            reader.result as ArrayBuffer,
-            "",
-          );
+          const sourceBuffer = reader.result as ArrayBuffer;
+          pendingAnimationBinaryDocument = null;
+          try {
+            pendingAnimationBinaryDocument = readBinaryFbx(sourceBuffer);
+          } catch (error) {
+            console.info(
+              `[FBX Viewer] Animation export unavailable for ${file.name}: ${getErrorDetail(error)}`,
+            );
+          }
+          pendingAnimationSource = new FBXLoader().parse(sourceBuffer, "");
           pendingAnimationFileName = file.name;
 
           if (!pendingAnimationSource.animations.length) {
@@ -1190,6 +1225,17 @@ export default function App() {
       mixer = new THREE.AnimationMixer(model);
       setActiveAnimation(mixer, [importedClip]);
       mixer.update(0);
+      activeAnimationBinaryDocument = pendingAnimationBinaryDocument;
+      activeAnimationFileName = pendingAnimationFileName;
+      externalAnimationApplied = true;
+      const baseAvailability = analyzeFbxExportContents(loadedBinaryDocument);
+      const externalAvailability = analyzeFbxExportContents(
+        activeAnimationBinaryDocument,
+      );
+      setExportAvailability({
+        character: baseAvailability.character,
+        animation: externalAvailability.animation,
+      });
       discardPendingAnimation();
     };
 
@@ -1205,9 +1251,13 @@ export default function App() {
 
       setLoadState("loading");
       setFileName(file.name);
-      setCanSaveFbx(false);
+      setExportAvailability({ character: false, animation: false });
+      setSaveDialog(null);
       loadedBinaryDocument = null;
       loadedBinaryFileName = "";
+      activeAnimationBinaryDocument = null;
+      activeAnimationFileName = "";
+      externalAnimationApplied = false;
       setMessage("Loading model…");
       setHasBones(false);
       setShowBones(false);
@@ -1268,7 +1318,7 @@ export default function App() {
           model = loader.parse(sourceBuffer, "");
           loadedBinaryDocument = binaryDocument;
           loadedBinaryFileName = file.name;
-          setCanSaveFbx(binaryDocument !== null);
+          setExportAvailability(analyzeFbxExportContents(binaryDocument));
           loadStage = "model scene setup";
           referenceTransforms = new Map();
           model.traverse((child) => {
@@ -1739,13 +1789,18 @@ export default function App() {
               <button
                 type="button"
                 className="secondary-button"
-                disabled={!canSaveFbx}
+                disabled={!exportAvailability.character && !exportAvailability.animation}
                 title={
-                  canSaveFbx
-                    ? "Serialize the loaded FBX with the browser binary writer"
-                    : "Save is available for supported binary FBX files"
+                  exportAvailability.character || exportAvailability.animation
+                    ? "Choose which FBX contents to export"
+                    : "Load an exportable character or animation first"
                 }
-                onClick={() => saveFbxRef.current()}
+                onClick={() =>
+                  setSaveDialog({
+                    character: exportAvailability.character,
+                    animation: exportAvailability.animation,
+                  })
+                }
               >
                 Save FBX
               </button>
@@ -2217,6 +2272,83 @@ export default function App() {
           }}
         />
       </section>
+
+      {saveDialog && (
+        <div className="import-backdrop">
+          <section
+            className="drop-choice-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="save-fbx-title"
+          >
+            <div className="drop-choice-header">
+              <div>
+                <h2 id="save-fbx-title">Save FBX</h2>
+                <p>Choose the contents to include.</p>
+              </div>
+              <button
+                className="close-panel"
+                aria-label="Cancel FBX save"
+                onClick={() => setSaveDialog(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="drop-choice-options">
+              <label className="drop-choice-option">
+                <input
+                  type="checkbox"
+                  checked={saveDialog.character}
+                  disabled={!exportAvailability.character}
+                  onChange={(event) =>
+                    setSaveDialog((current) =>
+                      current ? { ...current, character: event.target.checked } : current,
+                    )
+                  }
+                />
+                <span className="drop-choice-option-copy">
+                  <span>Character</span>
+                  {!exportAvailability.character && <small>No character loaded</small>}
+                </span>
+              </label>
+              <label className="drop-choice-option">
+                <input
+                  type="checkbox"
+                  checked={saveDialog.animation}
+                  disabled={!exportAvailability.animation}
+                  onChange={(event) =>
+                    setSaveDialog((current) =>
+                      current ? { ...current, animation: event.target.checked } : current,
+                    )
+                  }
+                />
+                <span className="drop-choice-option-copy">
+                  <span>Animation</span>
+                  {!exportAvailability.animation && <small>No animation loaded</small>}
+                </span>
+              </label>
+            </div>
+            <div className="drop-choice-actions">
+              <button
+                className="primary-button"
+                disabled={!saveDialog.character && !saveDialog.animation}
+                onClick={() => {
+                  saveFbxRef.current(saveDialog);
+                  setSaveDialog(null);
+                }}
+              >
+                Save
+              </button>
+              <button
+                className="secondary-button"
+                onClick={() => setSaveDialog(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {dropChoice && (
         <div className="import-backdrop">
