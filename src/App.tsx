@@ -44,6 +44,7 @@ type DropChoice = {
   hasAnimation: boolean;
   replaceModel: boolean;
   importAnimation: boolean;
+  resources?: File[];
   error?: string;
 };
 
@@ -591,7 +592,6 @@ export default function App() {
   );
   const inputRef = useRef<HTMLInputElement>(null);
   const assetFolderInputRef = useRef<HTMLInputElement>(null);
-  const animationInputRef = useRef<HTMLInputElement>(null);
   const currentModelFileRef = useRef<File | null>(null);
   const loadModelRef = useRef(
     (_file: File, _options?: LoadModelOptions) => undefined,
@@ -1386,13 +1386,107 @@ export default function App() {
     openFile(file, options);
   }, [openFile]);
 
+
+  const routeFbxFile = useCallback(async (file: File, resources: File[] = []) => {
+    if (!file.name.toLowerCase().endsWith(".fbx")) {
+      setDropChoice({
+        file,
+        status: "error",
+        hasModel: false,
+        hasAnimation: false,
+        replaceModel: false,
+        importAnimation: false,
+        resources,
+        error: "Please choose a .fbx file.",
+      });
+      return;
+    }
+
+    setDropChoice(null);
+    try {
+      const source = new FBXLoader().parse(await file.arrayBuffer(), "");
+      let hasModel = false;
+      source.traverse((child) => {
+        if (child instanceof THREE.Mesh) hasModel = true;
+      });
+      const hasAnimation = source.animations.length > 0;
+      disposeObject(source);
+
+      if (!hasModel && !hasAnimation) {
+        setDropChoice({
+          file,
+          status: "error",
+          hasModel: false,
+          hasAnimation: false,
+          replaceModel: false,
+          importAnimation: false,
+          resources,
+          error: "This FBX does not contain a model or animation clips.",
+        });
+        return;
+      }
+
+      const hasCurrentModel = loadState === "ready";
+      const canImportAnimation = hasCurrentModel && hasBones;
+
+      if (hasModel && hasAnimation && hasCurrentModel) {
+        setDropChoice({
+          file,
+          status: "ready",
+          hasModel: true,
+          hasAnimation: true,
+          replaceModel: false,
+          importAnimation: false,
+          resources,
+        });
+        return;
+      }
+
+      if (hasModel) {
+        openModelFile(file, {
+          resources,
+          importEmbeddedAnimation: hasAnimation,
+        });
+        return;
+      }
+
+      if (hasAnimation && canImportAnimation) {
+        loadAnimationRef.current(file);
+        return;
+      }
+
+      setDropChoice({
+        file,
+        status: "ready",
+        hasModel: false,
+        hasAnimation: true,
+        replaceModel: false,
+        importAnimation: false,
+        resources,
+        error: "Open a rigged model first to use this animation FBX.",
+      });
+    } catch (error) {
+      console.error(`[FBX Viewer] FBX analysis failed: ${getErrorDetail(error)}`, error);
+      setDropChoice({
+        file,
+        status: "error",
+        hasModel: false,
+        hasAnimation: false,
+        replaceModel: false,
+        importAnimation: false,
+        resources,
+        error: `FBX analysis failed: ${getErrorDetail(error)}`,
+      });
+    }
+  }, [hasBones, loadState, openModelFile]);
+
   const openFileSelection = useCallback(async (files?: FileList | File[]) => {
     if (!files?.length) return;
     const selected = Array.from(files);
     const fbx = selected.find((file) => file.name.toLowerCase().endsWith(".fbx"));
     if (!fbx) {
       setLoadState("error");
-      setMessage("Choose an FBX file together with any texture resources");
+      setMessage("Choose an FBX file");
       return;
     }
 
@@ -1400,28 +1494,28 @@ export default function App() {
       const resources = await expandResourceArchives(
         selected.filter((file) => file !== fbx),
       );
-      openModelFile(fbx, { resources });
+      await routeFbxFile(fbx, resources);
     } catch (error) {
       const detail = getErrorDetail(error);
       console.error(`[FBX Viewer] Resource archive failed: ${detail}`, error);
       setLoadState("error");
       setMessage(`Texture archive failed: ${detail}`);
     }
-  }, [openModelFile]);
+  }, [routeFbxFile]);
 
   const loadAssetFolderModel = useCallback(async (modelFile: File, selected: File[]) => {
     try {
       const resources = await expandResourceArchives(
         selected.filter((file) => !file.name.toLowerCase().endsWith(".fbx")),
       );
-      openModelFile(modelFile, { resources });
+      await routeFbxFile(modelFile, resources);
     } catch (error) {
       const detail = getErrorDetail(error);
       console.error(`[FBX Viewer] Asset folder load failed: ${detail}`, error);
       setLoadState("error");
       setMessage(`Asset folder failed: ${detail}`);
     }
-  }, [openModelFile]);
+  }, [routeFbxFile]);
 
   const openAssetFolderSelection = useCallback((files?: FileList | File[]) => {
     if (!files?.length) return;
@@ -1449,80 +1543,8 @@ export default function App() {
   }, [loadAssetFolderModel]);
 
   const analyzeDroppedFile = useCallback((file: File) => {
-    if (!file.name.toLowerCase().endsWith(".fbx")) {
-      setDropChoice({
-        file,
-        status: "error",
-        hasModel: false,
-        hasAnimation: false,
-        replaceModel: false,
-        importAnimation: false,
-        error: "Please drop a .fbx file.",
-      });
-      return;
-    }
-
-    setDropChoice({
-      file,
-      status: "analyzing",
-      hasModel: false,
-      hasAnimation: false,
-      replaceModel: false,
-      importAnimation: false,
-    });
-
-    const reader = new FileReader();
-    reader.onerror = () => {
-      setDropChoice((current) =>
-        current?.file === file
-          ? {
-              ...current,
-              status: "error",
-              error: "Could not read this FBX.",
-            }
-          : current,
-      );
-    };
-    reader.onload = () => {
-      try {
-        const source = new FBXLoader().parse(reader.result as ArrayBuffer, "");
-        let hasModel = false;
-        source.traverse((child) => {
-          if (child instanceof THREE.Mesh) hasModel = true;
-        });
-        const hasAnimation = source.animations.length > 0;
-
-        setDropChoice((current) =>
-          current?.file === file
-            ? {
-                file,
-                status: "ready",
-                hasModel,
-                hasAnimation,
-                replaceModel: hasModel,
-                importAnimation: hasAnimation,
-                error: hasModel || hasAnimation
-                  ? undefined
-                  : "This FBX does not contain a model or animation clips.",
-              }
-            : current,
-        );
-        disposeObject(source);
-      } catch (error) {
-        console.error(`[FBX Viewer] FBX analysis failed: ${getErrorDetail(error)}`, error);
-        setDropChoice((current) =>
-          current?.file === file
-            ? {
-                ...current,
-                status: "error",
-                error: `FBX analysis failed: ${getErrorDetail(error)}`,
-              }
-            : current,
-        );
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  }, []);
+    void routeFbxFile(file);
+  }, [routeFbxFile]);
 
   const formatAnimationTime = useCallback((time: number) => {
     if (!Number.isFinite(time)) return "0:00.00";
@@ -1632,8 +1654,7 @@ export default function App() {
   const unmatchedRootCount = animationImport?.unmatchedRootNodes.length ?? 0;
   const hasMappingIssues = unmatchedBoneCount + unmatchedRootCount > 0;
   const dropCanImportAnimation = Boolean(
-    dropChoice?.hasAnimation &&
-      (dropChoice.replaceModel || (loadState === "ready" && hasBones)),
+    dropChoice?.hasAnimation && loadState === "ready" && hasBones,
   );
   const dropCanApplyChoice = Boolean(
     dropChoice?.status === "ready" &&
@@ -1684,15 +1705,6 @@ export default function App() {
                 </button>
               </div>
             </details>
-            {loadState === "ready" && hasBones && (
-              <button
-                className="secondary-button"
-                title="Import an animation FBX onto the current skeleton"
-                onClick={() => animationInputRef.current?.click()}
-              >
-                Import Animation
-              </button>
-            )}
           </div>
         </div>
         <div className="viewport-display" aria-label="Viewport display controls">
@@ -2159,17 +2171,6 @@ export default function App() {
             event.currentTarget.value = "";
           }}
         />
-        <input
-          ref={animationInputRef}
-          className="visually-hidden"
-          type="file"
-          accept=".fbx"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) loadAnimationRef.current(file);
-            event.currentTarget.value = "";
-          }}
-        />
       </section>
 
       {dropChoice && (
@@ -2205,25 +2206,17 @@ export default function App() {
               >
                 <label className="drop-choice-option">
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="fbx-use"
                     checked={dropChoice.replaceModel}
                     disabled={!dropChoice.hasModel}
-                    onChange={(event) => {
-                      const replaceModel = event.target.checked;
+                    onChange={() =>
                       setDropChoice((current) =>
                         current
-                          ? {
-                              ...current,
-                              replaceModel,
-                              importAnimation: replaceModel
-                                ? current.importAnimation
-                                : current.importAnimation &&
-                                  loadState === "ready" &&
-                                  hasBones,
-                            }
+                          ? { ...current, replaceModel: true, importAnimation: false }
                           : current,
-                      );
-                    }}
+                      )
+                    }
                   />
                   <span className="drop-choice-option-copy">
                     <span>Replace current model</span>
@@ -2234,16 +2227,14 @@ export default function App() {
                 </label>
                 <label className="drop-choice-option">
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="fbx-use"
                     checked={dropChoice.importAnimation}
                     disabled={!dropCanImportAnimation}
-                    onChange={(event) =>
+                    onChange={() =>
                       setDropChoice((current) =>
                         current
-                          ? {
-                              ...current,
-                              importAnimation: event.target.checked,
-                            }
+                          ? { ...current, replaceModel: false, importAnimation: true }
                           : current,
                       )
                     }
@@ -2270,10 +2261,13 @@ export default function App() {
                 disabled={!dropCanApplyChoice}
                 onClick={() => {
                   if (!dropChoice) return;
-                  const { file, replaceModel, importAnimation } = dropChoice;
+                  const { file, replaceModel, importAnimation, resources } = dropChoice;
                   setDropChoice(null);
                   if (replaceModel) {
-                    openModelFile(file, { importEmbeddedAnimation: importAnimation });
+                    openModelFile(file, {
+                      resources,
+                      importEmbeddedAnimation: true,
+                    });
                     return;
                   }
                   if (importAnimation) loadAnimationRef.current(file);
