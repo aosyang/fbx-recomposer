@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { FBXLoader } from "./loaders/FastFBXLoader.js";
 import { retargetClipToCanonicalBones } from "./lib/animation-retarget";
+import {
+  readBinaryFbx,
+  writeBinaryFbx,
+  type BinaryFbxDocument,
+} from "./lib/binary-fbx";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TGALoader } from "three/examples/jsm/loaders/TGALoader.js";
 import { unzipSync } from "three/examples/jsm/libs/fflate.module.js";
@@ -607,6 +612,7 @@ export default function App() {
   const cancelAnimationImportRef = useRef<() => void>(() => undefined);
   const selectBoneRef = useRef<(boneId: string) => void>(() => undefined);
   const frameObjectRef = useRef<() => void>(() => undefined);
+  const saveFbxRef = useRef<() => void>(() => undefined);
   const seekAnimationRef = useRef<(time: number) => void>(() => undefined);
   const setAnimationPlayingRef = useRef<(playing: boolean) => void>(
     () => undefined,
@@ -622,6 +628,7 @@ export default function App() {
   );
   const [loadState, setLoadState] = useState<LoadState>("empty");
   const [fileName, setFileName] = useState("");
+  const [canSaveFbx, setCanSaveFbx] = useState(false);
   const [message, setMessage] = useState("Drop an FBX file here");
   const [isDragging, setIsDragging] = useState(false);
   const [hasBones, setHasBones] = useState(false);
@@ -713,6 +720,8 @@ export default function App() {
     scene.add(selectionMarker);
 
     let model: THREE.Group | null = null;
+    let loadedBinaryDocument: BinaryFbxDocument | null = null;
+    let loadedBinaryFileName = "";
     let releaseModelResources: () => void = () => {};
     let mixer: THREE.AnimationMixer | null = null;
     let animationActions: THREE.AnimationAction[] = [];
@@ -745,6 +754,33 @@ export default function App() {
     const solidMaterial = new THREE.MeshLambertMaterial({
       color: 0xd8dde1,
     });
+
+    saveFbxRef.current = () => {
+      if (!loadedBinaryDocument) return;
+
+      try {
+        const output = writeBinaryFbx(loadedBinaryDocument);
+        const blob = new Blob([output], { type: "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const baseName = loadedBinaryFileName.toLowerCase().endsWith(".fbx")
+          ? loadedBinaryFileName.slice(0, -4)
+          : loadedBinaryFileName || "model";
+        const downloadName = `${baseName}_saved.fbx`;
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = downloadName;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+        setMessage(`FBX download started: ${downloadName}`);
+      } catch (error) {
+        const detail = getErrorDetail(error);
+        console.error(`[FBX Viewer] FBX save failed: ${detail}`, error);
+        setMessage(`FBX save failed: ${detail}`);
+      }
+    };
 
     const resize = () => {
       const { clientWidth, clientHeight } = viewport;
@@ -1169,6 +1205,9 @@ export default function App() {
 
       setLoadState("loading");
       setFileName(file.name);
+      setCanSaveFbx(false);
+      loadedBinaryDocument = null;
+      loadedBinaryFileName = "";
       setMessage("Loading model…");
       setHasBones(false);
       setShowBones(false);
@@ -1214,10 +1253,22 @@ export default function App() {
           releaseModelResources();
           const localResources = createBrowserResourceManager(resources);
           releaseModelResources = localResources.release;
+          const sourceBuffer = reader.result as ArrayBuffer;
+          let binaryDocument: BinaryFbxDocument | null = null;
+          try {
+            binaryDocument = readBinaryFbx(sourceBuffer);
+          } catch (error) {
+            console.info(
+              `[FBX Viewer] Save FBX unavailable for ${file.name}: ${getErrorDetail(error)}`,
+            );
+          }
           const loader = new FBXLoader(localResources.manager)
             .setIncludeMorphTargets(true)
             .setMaxMorphTargets(MAX_RENDERED_MORPH_TARGETS);
-          model = loader.parse(reader.result as ArrayBuffer, "");
+          model = loader.parse(sourceBuffer, "");
+          loadedBinaryDocument = binaryDocument;
+          loadedBinaryFileName = file.name;
+          setCanSaveFbx(binaryDocument !== null);
           loadStage = "model scene setup";
           referenceTransforms = new Map();
           model.traverse((child) => {
@@ -1339,6 +1390,7 @@ export default function App() {
       } else {
         selectionMarker.material.dispose();
       }
+      saveFbxRef.current = () => undefined;
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -1684,6 +1736,19 @@ export default function App() {
                 </button>
               </div>
             </details>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={!canSaveFbx}
+                title={
+                  canSaveFbx
+                    ? "Serialize the loaded FBX with the browser binary writer"
+                    : "Save is available for supported binary FBX files"
+                }
+                onClick={() => saveFbxRef.current()}
+              >
+                Save FBX
+              </button>
           </div>
         </div>
         <div className="viewport-display" aria-label="Viewport display controls">
