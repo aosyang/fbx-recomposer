@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { FBXLoader } from "./loaders/FastFBXLoader.js";
+import { retargetClipToCanonicalBones } from "./lib/animation-retarget";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TGALoader } from "three/examples/jsm/loaders/TGALoader.js";
 import { unzipSync } from "three/examples/jsm/libs/fflate.module.js";
@@ -1142,51 +1143,14 @@ export default function App() {
       const sourceClip = pendingAnimationSource.animations[clipIndex];
       if (!sourceClip) return;
 
-      const targetBones = new Map<string, THREE.Bone>();
-      model.traverse((child) => {
-        if (child instanceof THREE.Bone && child.name) {
-          targetBones.set(child.name, child);
-        }
-      });
-      const targetRootNodes = collectUniqueNonBoneNodes(model);
-
-      const sourceBoneNames = new Set<string>();
-      pendingAnimationSource.traverse((child) => {
-        if (child instanceof THREE.Bone && child.name) {
-          sourceBoneNames.add(child.name);
-        }
-      });
-      const sourceRootNodeNames =
-        collectRootAncestorNodeNames(pendingAnimationSource);
-
-      const tracks = sourceClip.tracks.flatMap((track) => {
-        const targetName = getTrackBoneName(track.name);
-        if (!targetName) return [];
-
-        let targetObject: THREE.Object3D | undefined;
-        if (sourceBoneNames.has(targetName) && isTransformTrack(track)) {
-          targetObject = targetBones.get(targetName);
-        } else if (
-          sourceRootNodeNames.has(targetName) &&
-          isTransformTrack(track)
-        ) {
-          targetObject = targetRootNodes.get(targetName);
-        }
-
-        if (!targetObject) return [];
-        const clonedTrack = cloneTrackForObject(track, targetObject);
-        return clonedTrack ? [clonedTrack] : [];
-      });
-
-      if (!tracks.length) return;
+      const { clip: importedClip } = retargetClipToCanonicalBones(
+        pendingAnimationSource,
+        model,
+        sourceClip,
+      );
+      if (!importedClip.tracks.length) return;
 
       clearCurrentAnimation();
-
-      const importedClip = new THREE.AnimationClip(
-        sourceClip.name || "Imported animation",
-        sourceClip.duration,
-        tracks,
-      );
       mixer = new THREE.AnimationMixer(model);
       setActiveAnimation(mixer, [importedClip]);
       mixer.update(0);
