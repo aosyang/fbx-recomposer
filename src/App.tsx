@@ -13,6 +13,7 @@ import {
   type FbxExportAvailability,
   type FbxExportSelection,
 } from "./lib/fbx-export";
+import { saveLocalAsset } from "./lib/local-asset-store";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TGALoader } from "three/examples/jsm/loaders/TGALoader.js";
 import { unzipSync } from "three/examples/jsm/libs/fflate.module.js";
@@ -63,6 +64,11 @@ type DropChoice = {
 type LoadModelOptions = {
   importEmbeddedAnimation?: boolean;
   resources?: File[];
+  persistLocalAsset?: boolean;
+};
+
+type LoadAnimationOptions = {
+  persistLocalAsset?: boolean;
 };
 
 type AssetFolderChoice = {
@@ -608,7 +614,9 @@ export default function App() {
   const loadModelRef = useRef(
     (_file: File, _options?: LoadModelOptions) => undefined,
   );
-  const loadAnimationRef = useRef<(file: File) => void>(() => undefined);
+  const loadAnimationRef = useRef<(file: File, options?: LoadAnimationOptions) => void>(
+    () => undefined,
+  );
   const selectAnimationClipRef = useRef<(index: number) => void>(
     () => undefined,
   );
@@ -751,6 +759,8 @@ export default function App() {
     >();
     let pendingAnimationSource: THREE.Group | null = null;
     let pendingAnimationFileName = "";
+    let pendingAnimationFile: File | null = null;
+    let pendingAnimationShouldPersist = true;
     let pendingAnimationBinaryDocument: BinaryFbxDocument | null = null;
     let activeAnimationBinaryDocument: BinaryFbxDocument | null = null;
     let activeAnimationFileName = "";
@@ -1022,6 +1032,8 @@ export default function App() {
         pendingAnimationSource = null;
       }
       pendingAnimationFileName = "";
+      pendingAnimationFile = null;
+      pendingAnimationShouldPersist = true;
       pendingAnimationBinaryDocument = null;
       setAnimationImport(null);
     };
@@ -1136,10 +1148,12 @@ export default function App() {
     cancelAnimationImportRef.current = discardPendingAnimation;
     selectAnimationClipRef.current = buildAnimationPreview;
 
-    loadAnimationRef.current = (file: File) => {
+    loadAnimationRef.current = (file: File, options?: LoadAnimationOptions) => {
       if (!model || !file.name.toLowerCase().endsWith(".fbx")) return;
 
       discardPendingAnimation();
+      pendingAnimationFile = file;
+      pendingAnimationShouldPersist = options?.persistLocalAsset ?? true;
       const loadVersion = animationLoadVersion;
       const reader = new FileReader();
       reader.onerror = () => {
@@ -1236,12 +1250,19 @@ export default function App() {
         character: baseAvailability.character,
         animation: externalAvailability.animation,
       });
+      if (pendingAnimationShouldPersist && pendingAnimationFile) {
+        const animationFile = pendingAnimationFile;
+        void saveLocalAsset("animation", animationFile).catch((error) => {
+          console.warn("[FBX Viewer] Could not persist animation locally", error);
+        });
+      }
       discardPendingAnimation();
     };
 
     loadModelRef.current = (file: File, options?: LoadModelOptions) => {
       const importEmbeddedAnimation = options?.importEmbeddedAnimation ?? true;
       const resources = options?.resources ?? [];
+      const persistLocalAsset = options?.persistLocalAsset ?? true;
 
       if (!file.name.toLowerCase().endsWith(".fbx")) {
         setLoadState("error");
@@ -1376,6 +1397,11 @@ export default function App() {
           );
           setLoadState("ready");
           setMessage("Model ready");
+          if (persistLocalAsset) {
+            void saveLocalAsset("model", file, resources).catch((error) => {
+              console.warn("[FBX Viewer] Could not persist model locally", error);
+            });
+          }
         } catch (error) {
           const detail = getErrorDetail(error);
           console.error(`[FBX Viewer] ${loadStage} failed: ${detail}`, error);
