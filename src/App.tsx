@@ -681,6 +681,8 @@ export default function App() {
   } | null>(null);
   const [animationTimeline, setAnimationTimeline] =
     useState<AnimationTimeline | null>(null);
+  const [stripRootMotionPreview, setStripRootMotionPreview] = useState(false);
+  const stripRootMotionPreviewRef = useRef(false);
   const [mappingDetailsOpen, setMappingDetailsOpen] = useState(false);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
   const [dropChoice, setDropChoice] = useState<DropChoice | null>(null);
@@ -772,6 +774,7 @@ export default function App() {
       }
     >();
     let pendingAnimationSource: THREE.Group | null = null;
+    let previewRootMotionTargets: THREE.Object3D[] = [];
     let pendingAnimationFileName = "";
     let pendingAnimationFile: File | null = null;
     let pendingAnimationShouldPersist = true;
@@ -941,11 +944,53 @@ export default function App() {
       });
     };
 
+    const updatePreviewRootMotionTargets = (clips: THREE.AnimationClip[]) => {
+      if (!model) {
+        previewRootMotionTargets = [];
+        return;
+      }
+      const rootAncestorNames = collectRootAncestorNodeNames(model);
+      const targets = new Set<THREE.Object3D>();
+      clips.forEach((clip) => {
+        clip.tracks.forEach((track) => {
+          let propertyName = "";
+          try {
+            propertyName = THREE.PropertyBinding.parseTrackName(track.name).propertyName ?? "";
+          } catch {
+            return;
+          }
+          if (propertyName !== "position" && propertyName !== "quaternion") return;
+          const targetName = getTrackBoneName(track.name);
+          if (!targetName) return;
+          const target =
+            model?.getObjectByProperty("uuid", targetName) ?? model?.getObjectByName(targetName);
+          if (!target) return;
+          const isRootBone = target instanceof THREE.Bone && !(target.parent instanceof THREE.Bone);
+          const isRootAncestor =
+            !(target instanceof THREE.Bone) && Boolean(target.name) && rootAncestorNames.has(target.name);
+          if (isRootBone || isRootAncestor) targets.add(target);
+        });
+      });
+      previewRootMotionTargets = [...targets];
+    };
+
+    const applyPreviewRootMotionStrip = () => {
+      if (!stripRootMotionPreviewRef.current || !model) return;
+      previewRootMotionTargets.forEach((target) => {
+        const reference = referenceTransforms.get(target.uuid);
+        if (!reference) return;
+        target.position.copy(reference.position);
+        target.quaternion.copy(reference.quaternion);
+      });
+      model.updateWorldMatrix(true, true);
+    };
+
     const setActiveAnimation = (
       nextMixer: THREE.AnimationMixer,
       clips: THREE.AnimationClip[],
     ) => {
       mixer = nextMixer;
+      updatePreviewRootMotionTargets(clips);
       animationActions = clips.map((clip) =>
         nextMixer.clipAction(clip).reset().play(),
       );
@@ -955,6 +1000,7 @@ export default function App() {
           ? clips[0].name || "Animation"
           : `${clips.length} animations`;
       nextMixer.update(0);
+      applyPreviewRootMotionStrip();
       try {
         animationFrameBounds = sampleAnimationBounds(clips);
       } catch (error) {
@@ -976,6 +1022,7 @@ export default function App() {
       });
       mixer.setTime(THREE.MathUtils.clamp(time, 0, animationDuration));
       mixer.update(0);
+      applyPreviewRootMotionStrip();
       animationActions.forEach((action, index) => {
         action.paused = pausedStates[index] ?? false;
       });
@@ -1472,6 +1519,7 @@ export default function App() {
       lastFrame = time;
       if (mixer && animationActions.some((action) => !action.paused)) {
         mixer.update(delta);
+        applyPreviewRootMotionStrip();
         syncAnimationTimeline();
       }
       if (selectedBone) {
@@ -1823,6 +1871,13 @@ export default function App() {
     [animationTimeline],
   );
 
+  const toggleStripRootMotionPreview = useCallback(() => {
+    const nextValue = !stripRootMotionPreview;
+    stripRootMotionPreviewRef.current = nextValue;
+    setStripRootMotionPreview(nextValue);
+    if (animationTimeline) seekAnimationRef.current(animationTimeline.time);
+  }, [animationTimeline, stripRootMotionPreview]);
+
   const startPanelResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
@@ -2134,6 +2189,15 @@ export default function App() {
                       onClick={() => seekAnimationByFrame(1)}
                     >
                       <span className="timeline-step-icon" aria-hidden="true" />
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      aria-pressed={stripRootMotionPreview}
+                      title="Keep animated root transforms at their reference pose during preview only"
+                      onClick={toggleStripRootMotionPreview}
+                    >
+                      {stripRootMotionPreview ? "✓ Strip Root Motion" : "Strip Root Motion"}
                     </button>
                   </div>
                   <div className="timeline-meta">
