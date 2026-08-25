@@ -633,10 +633,18 @@ button {
 .timeline-meta {
   display: grid;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.timeline-meta-copy {
+  display: grid;
+  min-width: 0;
   gap: 3px;
 }
 
-.timeline-meta span {
+.timeline-meta-copy > span {
   overflow: hidden;
   color: #eef2f3;
   font-size: 11px;
@@ -645,9 +653,31 @@ button {
   white-space: nowrap;
 }
 
-.timeline-meta span:last-child {
+.timeline-meta-copy > span:last-child {
   color: #98a1a9;
   font-size: 10px;
+}
+
+.timeline-preview-option {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: #aeb6bc;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.timeline-preview-option:hover {
+  color: #eef2f3;
+}
+
+.timeline-preview-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #7ef29a;
+  cursor: pointer;
 }
 
 .timeline-scrubber {

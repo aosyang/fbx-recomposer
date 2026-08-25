@@ -2190,24 +2190,28 @@ export default function App() {
                     >
                       <span className="timeline-step-icon" aria-hidden="true" />
                     </button>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      aria-pressed={stripRootMotionPreview}
-                      title="Keep animated root transforms at their reference pose during preview only"
-                      onClick={toggleStripRootMotionPreview}
-                    >
-                      {stripRootMotionPreview ? "✓ Strip Root Motion" : "Strip Root Motion"}
-                    </button>
                   </div>
                   <div className="timeline-meta">
-                    <span title={animationTimeline.clipName}>
-                      {animationTimeline.clipName}
-                    </span>
-                    <span>
-                      {formatAnimationTime(animationTimeline.time)} /{" "}
-                      {formatAnimationTime(animationTimeline.duration)}
-                    </span>
+                    <div className="timeline-meta-copy">
+                      <span title={animationTimeline.clipName}>
+                        {animationTimeline.clipName}
+                      </span>
+                      <span>
+                        {formatAnimationTime(animationTimeline.time)} /{" "}
+                        {formatAnimationTime(animationTimeline.duration)}
+                      </span>
+                    </div>
+                    <label
+                      className="timeline-preview-option"
+                      title="Strip root translation and rotation during preview only"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={stripRootMotionPreview}
+                        onChange={toggleStripRootMotionPreview}
+                      />
+                      <span>In-place</span>
+                    </label>
                   </div>
                   <div
                     id="animation-timeline"
