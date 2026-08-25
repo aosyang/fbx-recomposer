@@ -13,7 +13,12 @@ import {
   type FbxExportAvailability,
   type FbxExportSelection,
 } from "./lib/fbx-export";
-import { saveLocalAsset } from "./lib/local-asset-store";
+import {
+  getLastSceneManifest,
+  getLocalAsset,
+  saveLocalAsset,
+  setLastSceneManifest,
+} from "./lib/local-asset-store";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TGALoader } from "three/examples/jsm/loaders/TGALoader.js";
 import { unzipSync } from "three/examples/jsm/libs/fflate.module.js";
@@ -69,6 +74,7 @@ type LoadModelOptions = {
 
 type LoadAnimationOptions = {
   persistLocalAsset?: boolean;
+  autoApplyClipIndex?: number;
 };
 
 type AssetFolderChoice = {
@@ -611,6 +617,14 @@ export default function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const assetFolderInputRef = useRef<HTMLInputElement>(null);
   const currentModelFileRef = useRef<File | null>(null);
+  const currentModelAssetIdRef = useRef<string | null>(null);
+  const currentAnimationAssetIdRef = useRef<string | null>(null);
+  const currentAnimationClipIndexRef = useRef<number | null>(null);
+  const pendingSceneAnimationRef = useRef<{
+    file: File;
+    assetId: string;
+    clipIndex: number;
+  } | null>(null);
   const loadModelRef = useRef(
     (_file: File, _options?: LoadModelOptions) => undefined,
   );
@@ -1200,7 +1214,15 @@ export default function App() {
             return;
           }
 
-          buildAnimationPreview(0);
+          const autoApplyClipIndex = options?.autoApplyClipIndex;
+          const selectedClipIndex = Math.min(
+            Math.max(autoApplyClipIndex ?? 0, 0),
+            pendingAnimationSource.animations.length - 1,
+          );
+          buildAnimationPreview(selectedClipIndex);
+          if (autoApplyClipIndex !== undefined) {
+            applyAnimationRef.current(selectedClipIndex);
+          }
         } catch (error) {
           console.error(
             `[FBX Viewer] Animation FBX parse failed: ${getErrorDetail(error)}`,
@@ -1252,9 +1274,19 @@ export default function App() {
       });
       if (pendingAnimationShouldPersist && pendingAnimationFile) {
         const animationFile = pendingAnimationFile;
-        void saveLocalAsset("animation", animationFile).catch((error) => {
-          console.warn("[FBX Viewer] Could not persist animation locally", error);
-        });
+        void saveLocalAsset("animation", animationFile)
+          .then((asset) => {
+            currentAnimationAssetIdRef.current = asset.id;
+            currentAnimationClipIndexRef.current = clipIndex;
+            return setLastSceneManifest({
+              modelAssetId: currentModelAssetIdRef.current ?? undefined,
+              animationAssetId: asset.id,
+              selectedClipIndex: clipIndex,
+            });
+          })
+          .catch((error) => {
+            console.warn("[FBX Viewer] Could not persist animation locally", error);
+          });
       }
       discardPendingAnimation();
     };
@@ -1263,6 +1295,12 @@ export default function App() {
       const importEmbeddedAnimation = options?.importEmbeddedAnimation ?? true;
       const resources = options?.resources ?? [];
       const persistLocalAsset = options?.persistLocalAsset ?? true;
+      if (persistLocalAsset) {
+        currentModelAssetIdRef.current = null;
+        currentAnimationAssetIdRef.current = null;
+        currentAnimationClipIndexRef.current = null;
+        pendingSceneAnimationRef.current = null;
+      }
 
       if (!file.name.toLowerCase().endsWith(".fbx")) {
         setLoadState("error");
@@ -1398,8 +1436,25 @@ export default function App() {
           setLoadState("ready");
           setMessage("Model ready");
           if (persistLocalAsset) {
-            void saveLocalAsset("model", file, resources).catch((error) => {
-              console.warn("[FBX Viewer] Could not persist model locally", error);
+            void saveLocalAsset("model", file, resources)
+              .then((asset) => {
+                currentModelAssetIdRef.current = asset.id;
+                return setLastSceneManifest({
+                  modelAssetId: asset.id,
+                  animationAssetId: currentAnimationAssetIdRef.current ?? undefined,
+                  selectedClipIndex: currentAnimationClipIndexRef.current ?? undefined,
+                });
+              })
+              .catch((error) => {
+                console.warn("[FBX Viewer] Could not persist model locally", error);
+              });
+          }
+          const pendingSceneAnimation = pendingSceneAnimationRef.current;
+          if (pendingSceneAnimation) {
+            pendingSceneAnimationRef.current = null;
+            loadAnimationRef.current(pendingSceneAnimation.file, {
+              persistLocalAsset: false,
+              autoApplyClipIndex: pendingSceneAnimation.clipIndex,
             });
           }
         } catch (error) {
@@ -1469,6 +1524,60 @@ export default function App() {
       saveFbxRef.current = () => undefined;
       renderer.dispose();
       renderer.domElement.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const manifest = await getLastSceneManifest();
+        if (cancelled || !manifest?.modelAssetId) return;
+
+        const modelAsset = await getLocalAsset(manifest.modelAssetId);
+        if (cancelled) return;
+        if (!modelAsset) {
+          await setLastSceneManifest(null);
+          return;
+        }
+
+        const animationAsset = manifest.animationAssetId
+          ? await getLocalAsset(manifest.animationAssetId)
+          : null;
+        if (cancelled) return;
+
+        currentModelAssetIdRef.current = manifest.modelAssetId;
+        currentAnimationAssetIdRef.current = animationAsset
+          ? manifest.animationAssetId ?? null
+          : null;
+        currentAnimationClipIndexRef.current = animationAsset
+          ? manifest.selectedClipIndex ?? 0
+          : null;
+        pendingSceneAnimationRef.current = animationAsset && manifest.animationAssetId
+          ? {
+              file: animationAsset.file,
+              assetId: manifest.animationAssetId,
+              clipIndex: manifest.selectedClipIndex ?? 0,
+            }
+          : null;
+
+        if (manifest.animationAssetId && !animationAsset) {
+          await setLastSceneManifest({ modelAssetId: manifest.modelAssetId });
+        }
+
+        currentModelFileRef.current = modelAsset.file;
+        loadModelRef.current(modelAsset.file, {
+          resources: modelAsset.resources,
+          persistLocalAsset: false,
+        });
+      } catch (error) {
+        console.warn("[FBX Viewer] Could not restore the last local scene", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
   }, []);
 
