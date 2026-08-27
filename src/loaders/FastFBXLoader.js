@@ -53,6 +53,79 @@ let sceneGraph;
 let includeMorphTargets;
 let maxMorphTargets;
 
+let embeddedImageHasNonOpaqueAlpha;
+
+function paethPredictor( a, b, c ) {
+	const p = a + b - c;
+	const pa = Math.abs( p - a );
+	const pb = Math.abs( p - b );
+	const pc = Math.abs( p - c );
+	if ( pa <= pb && pa <= pc ) return a;
+	if ( pb <= pc ) return b;
+	return c;
+}
+
+function pngHasNonOpaqueAlpha( content ) {
+	let bytes;
+	if ( content instanceof ArrayBuffer ) bytes = new Uint8Array( content );
+	else if ( typeof content === 'string' ) {
+		try {
+			const decoded = atob( content );
+			bytes = Uint8Array.from( decoded, ( value ) => value.charCodeAt( 0 ) );
+		} catch { return false; }
+	} else return false;
+
+	const signature = [ 137, 80, 78, 71, 13, 10, 26, 10 ];
+	if ( bytes.length < signature.length || signature.some( ( value, index ) => bytes[ index ] !== value ) ) return false;
+	const view = new DataView( bytes.buffer, bytes.byteOffset, bytes.byteLength );
+	let width = 0, height = 0, bitDepth = 0, colorType = 0, interlace = 0;
+	const idatParts = [];
+	let offset = 8;
+	while ( offset + 12 <= bytes.length ) {
+		const length = view.getUint32( offset );
+		const typeOffset = offset + 4;
+		const dataOffset = offset + 8;
+		const dataEnd = dataOffset + length;
+		if ( dataEnd + 4 > bytes.length ) return false;
+		const type = String.fromCharCode( bytes[ typeOffset ], bytes[ typeOffset + 1 ], bytes[ typeOffset + 2 ], bytes[ typeOffset + 3 ] );
+		if ( type === 'IHDR' && length >= 13 ) {
+			width = view.getUint32( dataOffset ); height = view.getUint32( dataOffset + 4 );
+			bitDepth = bytes[ dataOffset + 8 ]; colorType = bytes[ dataOffset + 9 ]; interlace = bytes[ dataOffset + 12 ];
+		} else if ( type === 'IDAT' ) idatParts.push( bytes.subarray( dataOffset, dataEnd ) );
+		else if ( type === 'IEND' ) break;
+		offset = dataEnd + 4;
+	}
+	if ( bitDepth !== 8 || interlace !== 0 || ( colorType !== 4 && colorType !== 6 ) || width === 0 || height === 0 || idatParts.length === 0 ) return false;
+	const channels = colorType === 6 ? 4 : 2;
+	const compressed = new Uint8Array( idatParts.reduce( ( total, part ) => total + part.length, 0 ) );
+	let compressedOffset = 0;
+	idatParts.forEach( ( part ) => { compressed.set( part, compressedOffset ); compressedOffset += part.length; } );
+	let scanlines;
+	try { scanlines = unzlibSync( compressed ); } catch { return false; }
+	const rowBytes = width * channels;
+	if ( scanlines.length < height * ( rowBytes + 1 ) ) return false;
+	let previous = new Uint8Array( rowBytes );
+	let current = new Uint8Array( rowBytes );
+	let cursor = 0;
+	for ( let y = 0; y < height; y ++ ) {
+		const filter = scanlines[ cursor ++ ];
+		for ( let x = 0; x < rowBytes; x ++ ) {
+			const source = scanlines[ cursor ++ ];
+			const left = x >= channels ? current[ x - channels ] : 0;
+			const up = previous[ x ];
+			const upperLeft = x >= channels ? previous[ x - channels ] : 0;
+			let predictor = 0;
+			if ( filter === 1 ) predictor = left; else if ( filter === 2 ) predictor = up;
+			else if ( filter === 3 ) predictor = Math.floor( ( left + up ) / 2 );
+			else if ( filter === 4 ) predictor = paethPredictor( left, up, upperLeft ); else if ( filter !== 0 ) return false;
+			current[ x ] = ( source + predictor ) & 255;
+		}
+		for ( let x = channels - 1; x < rowBytes; x += channels ) if ( current[ x ] < 255 ) return true;
+		const swap = previous; previous = current; current = swap;
+	}
+	return false;
+}
+
 /**
  * A loader for the FBX format.
  *
@@ -280,6 +353,7 @@ class FBXTreeParser {
 
 		const images = {};
 		const blobs = {};
+		embeddedImageHasNonOpaqueAlpha = new Map();
 
 		if ( 'Video' in fbxTree.Objects ) {
 
@@ -302,6 +376,7 @@ class FBXTreeParser {
 					if ( arrayBufferContent || base64Content ) {
 
 						const image = this.parseImage( videoNodes[ nodeID ] );
+						embeddedImageHasNonOpaqueAlpha.set( id, pngHasNonOpaqueAlpha( videoNode.Content ) );
 
 						blobs[ videoNode.RelativeFilename || videoNode.Filename ] = image;
 
@@ -479,10 +554,12 @@ class FBXTreeParser {
 		const children = connections.get( textureNode.id ).children;
 
 		let fileName;
+		let imageID;
 
 		if ( children !== undefined && children.length > 0 && images[ children[ 0 ].ID ] !== undefined ) {
 
-			fileName = images[ children[ 0 ].ID ];
+			imageID = children[ 0 ].ID;
+			fileName = images[ imageID ];
 
 			if ( fileName.indexOf( 'blob:' ) === 0 || fileName.indexOf( 'data:' ) === 0 ) {
 
@@ -500,6 +577,7 @@ class FBXTreeParser {
 		}
 
 		const texture = loader.load( fileName );
+		texture.userData.fbxEmbeddedImageHasNonOpaqueAlpha = imageID !== undefined && embeddedImageHasNonOpaqueAlpha?.get( imageID ) === true;
 
 		// revert to initial path
 		loader.setPath( loaderPath );
@@ -692,6 +770,7 @@ class FBXTreeParser {
 					if ( parameters.map !== undefined ) {
 
 						parameters.map.colorSpace = SRGBColorSpace;
+						if ( parameters.map.userData.fbxEmbeddedImageHasNonOpaqueAlpha === true ) parameters.transparent = true;
 
 					}
 
