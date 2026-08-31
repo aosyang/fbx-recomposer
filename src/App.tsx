@@ -759,7 +759,8 @@ export default function App() {
     let animationActions: THREE.AnimationAction[] = [];
     let animationDuration = 0;
     let animationClipName = "";
-    let animationFrameBounds: THREE.Box3 | null = null;
+    let animationFrameBoundsRootMotion: THREE.Box3 | null = null;
+    let animationFrameBoundsInPlace: THREE.Box3 | null = null;
     let lastTimelineUpdate = 0;
     let skeletonHelper: THREE.SkeletonHelper | null = null;
     let selectedBone: THREE.Bone | null = null;
@@ -844,7 +845,7 @@ export default function App() {
       camera.updateProjectionMatrix();
     };
 
-    const sampleAnimationBounds = (clips: THREE.AnimationClip[]) => {
+    const sampleAnimationBounds = (clips: THREE.AnimationClip[], stripRootMotion = false) => {
       if (!model || !mixer || clips.length === 0) return null;
 
       const savedMixerTime = mixer.time;
@@ -862,6 +863,7 @@ export default function App() {
 
         getAnimationFrameTimes(clips).forEach((time) => {
           mixer!.setTime(time);
+          if (stripRootMotion) applyPreviewRootMotionStrip(true);
           model!.updateWorldMatrix(true, true);
           animatedBoneBounds.union(getBoneWorldBounds(model!));
         });
@@ -905,6 +907,9 @@ export default function App() {
 
     const frameObject = () => {
       if (!model) return;
+      const animationFrameBounds = stripRootMotionPreviewRef.current
+        ? animationFrameBoundsInPlace
+        : animationFrameBoundsRootMotion;
       const box = animationFrameBounds?.clone() ?? getBoundsIncludingBones(model);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
@@ -974,8 +979,8 @@ export default function App() {
       previewRootMotionTargets = [...targets];
     };
 
-    const applyPreviewRootMotionStrip = () => {
-      if (!stripRootMotionPreviewRef.current || !model) return;
+    const applyPreviewRootMotionStrip = (force = false) => {
+      if ((!force && !stripRootMotionPreviewRef.current) || !model) return;
       previewRootMotionTargets.forEach((target) => {
         const reference = referenceTransforms.get(target.uuid);
         if (!reference) return;
@@ -1002,14 +1007,18 @@ export default function App() {
       nextMixer.update(0);
       applyPreviewRootMotionStrip();
       try {
-        animationFrameBounds = sampleAnimationBounds(clips);
+        animationFrameBoundsRootMotion = sampleAnimationBounds(clips, false);
+        animationFrameBoundsInPlace = sampleAnimationBounds(clips, true);
       } catch (error) {
-        animationFrameBounds = null;
+        animationFrameBoundsRootMotion = null;
+        animationFrameBoundsInPlace = null;
         console.warn(
           `[FBX Viewer] Animation framing failed; falling back to current pose: ${getErrorDetail(error)}`,
           error,
         );
       }
+      applyPreviewRootMotionStrip();
+      model.updateWorldMatrix(true, true);
       syncAnimationTimeline(true);
       frameObject();
     };
@@ -1116,7 +1125,8 @@ export default function App() {
       animationActions = [];
       animationDuration = 0;
       animationClipName = "";
-      animationFrameBounds = null;
+      animationFrameBoundsRootMotion = null;
+      animationFrameBoundsInPlace = null;
       setAnimationTimeline(null);
 
       model.traverse((child) => {
@@ -1411,7 +1421,8 @@ export default function App() {
           animationActions = [];
           animationDuration = 0;
           animationClipName = "";
-          animationFrameBounds = null;
+          animationFrameBoundsRootMotion = null;
+          animationFrameBoundsInPlace = null;
           releaseModelResources();
           const localResources = createBrowserResourceManager(resources);
           releaseModelResources = localResources.release;
