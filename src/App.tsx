@@ -1020,7 +1020,13 @@ export default function App() {
       animationActions.forEach((action) => {
         action.paused = false;
       });
-      mixer.setTime(THREE.MathUtils.clamp(time, 0, animationDuration));
+      const clampedTime = THREE.MathUtils.clamp(time, 0, animationDuration);
+      // THREE.LoopRepeat wraps an exact clip-duration sample back to frame zero.
+      // Keep manual seeks on the final pose by sampling an imperceptible amount before the seam.
+      const sampledTime = clampedTime >= animationDuration
+        ? Math.max(0, animationDuration - Math.min(1e-6, animationDuration * 1e-6))
+        : clampedTime;
+      mixer.setTime(sampledTime);
       mixer.update(0);
       applyPreviewRootMotionStrip();
       animationActions.forEach((action, index) => {
