@@ -1018,7 +1018,7 @@ export default function App() {
         );
       }
       applyPreviewRootMotionStrip();
-      model.updateWorldMatrix(true, true);
+      model?.updateWorldMatrix(true, true);
       syncAnimationTimeline(true);
       frameObject();
     };
