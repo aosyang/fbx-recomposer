@@ -489,6 +489,9 @@
   }
 
   .timeline-scrubber {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
     align-self: center;
   }
 
@@ -682,6 +685,94 @@
     flex-wrap: wrap;
   }
   .root-motion-chart { height: 118px; }
+}
+
+/* Phone workspace: one primary surface at a time. */
+.animation-mobile-pane-switcher {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .viewer.workspace-animation {
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .workspace-animation .viewer-left {
+    display: none;
+  }
+
+  .workspace-animation .animation-workspace-panel {
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 8px;
+    overflow: hidden;
+    border-bottom: 0;
+  }
+
+  .animation-mobile-pane-switcher {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid #343b42;
+    border-radius: 7px;
+    background: #171b1f;
+  }
+
+  .animation-mobile-pane-switcher button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #929ca5;
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .animation-mobile-pane-switcher button.is-active {
+    background: #303840;
+    color: #fff;
+  }
+
+  .animation-mobile-pane-switcher button:disabled {
+    opacity: .38;
+  }
+
+  .animation-workspace-panel.is-mobile-modifiers .animation-workspace-diagnostics,
+  .animation-workspace-panel.is-mobile-analysis .animation-workspace-stack {
+    display: none;
+  }
+
+  .animation-workspace-stack,
+  .animation-workspace-diagnostics {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .workspace-animation .animation-workspace-diagnostics {
+    margin: 0;
+    height: 100%;
+    box-sizing: border-box;
+  }
+
+  .root-motion-chart-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .root-motion-chart-legend {
+    flex-wrap: wrap;
+  }
+
+  .root-motion-chart {
+    height: 158px;
+  }
 }
 
 .root-motion-series.estimated { opacity: .62; stroke-dasharray: 5 4; }

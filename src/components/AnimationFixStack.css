@@ -85,8 +85,24 @@
 .animation-fix-stack-footer button:disabled { opacity: .4; cursor: default; }
 
 @media (max-width: 640px) {
-  .animation-fix-stack-shell { padding: 10px; }
-  .animation-fix-stack-card { min-height: 52px; }
+  .animation-fix-stack-shell {
+    padding: 10px;
+    min-height: 100%;
+    box-sizing: border-box;
+  }
+  .animation-fix-stack-card { min-height: 56px; }
+  .animation-fix-inline-config select,
+  .animation-fix-inline-config input:not([type="checkbox"]):not([type="range"]) {
+    min-height: 44px;
+  }
+  .animation-fix-inline-config input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+  }
+  .decomposition-gain-slider input[type="range"] {
+    height: 32px;
+  }
 }
 
 
@@ -196,5 +212,24 @@
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid #2b3339;
+  }
+}
+
+@media (max-width: 640px) {
+  .root-motion-config-row {
+    gap: 10px;
+  }
+
+  .root-motion-config-row > label:not(.root-motion-yaw-toggle) {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .root-motion-yaw-toggle {
+    grid-template-columns: 96px 22px !important;
+    width: 100%;
+  }
+
+  .loop-fix-inline-config > label {
+    grid-template-columns: 96px minmax(0, 1fr);
   }
 }

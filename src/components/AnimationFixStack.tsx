@@ -268,7 +268,7 @@ export default function MotionStack({
             onEnabledChange={onLoopFixEnabledChange}
           />
           {selected === "loopFix" && (
-            <div className="animation-fix-inline-config">
+            <div className="animation-fix-inline-config loop-fix-inline-config">
               <label><span>Mode</span><select value={config.loopFix.mode} disabled={disabled || !config.loopFix.enabled} onChange={(event) => onLoopModeChange(event.target.value as AnimationLoopFixMode)}><option value="cyclic">Cyclic</option><option value="inertial">Inertial</option></select></label>
               <label><span>Root</span><select value={config.loopFix.rootPolicy} disabled={disabled || !config.loopFix.enabled} onChange={(event) => onLoopRootPolicyChange(event.target.value as AnimationLoopRootPolicy)}><option value="auto">Auto</option><option value="close">Close</option><option value="preserve">Preserve</option></select></label>
             </div>

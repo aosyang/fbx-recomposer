@@ -1,3 +1,4 @@
+import { useState } from "react";
 import AnimationDiagnosticsPanel from "./AnimationDiagnosticsPanel";
 import MotionStack, { type MotionStackConfig, type MotionOperationKind } from "./AnimationFixStack";
 import type { AnimationContactLoopAnalysis } from "../lib/animation-contact-loop-fix";
@@ -60,8 +61,34 @@ export default function AnimationWorkspacePanel({
   onLoopModeChange,
   onLoopRootPolicyChange,
 }: AnimationWorkspacePanelProps) {
+  const [mobilePane, setMobilePane] = useState<"modifiers" | "analysis">("modifiers");
+  const analysisAvailable = selectedOperation !== "decomposition";
+
   return (
-    <section className="animation-workspace-panel" aria-label="Motion processing workspace">
+    <section
+      className={`animation-workspace-panel is-mobile-${mobilePane}`}
+      aria-label="Motion processing workspace"
+    >
+      <div className="animation-mobile-pane-switcher" role="group" aria-label="Animation workspace panel">
+        <button
+          type="button"
+          className={mobilePane === "modifiers" ? "is-active" : ""}
+          aria-pressed={mobilePane === "modifiers"}
+          onClick={() => setMobilePane("modifiers")}
+        >
+          Modifiers
+        </button>
+        <button
+          type="button"
+          className={mobilePane === "analysis" ? "is-active" : ""}
+          aria-pressed={mobilePane === "analysis"}
+          disabled={!analysisAvailable}
+          onClick={() => setMobilePane("analysis")}
+        >
+          Analysis
+        </button>
+      </div>
+
       <div className="animation-workspace-stack">
         <MotionStack
           disabled={!hasAnimation}
