@@ -445,6 +445,12 @@ function collectBoneHierarchy(object: THREE.Object3D): BoneNode[] {
     const children = collectBoneHierarchy(child);
 
     if (child instanceof THREE.Bone) {
+      // FastFBXLoader may insert same-name proxy bones for shared skin clusters.
+      // Flatten those proxies so the UI reflects the canonical skeleton hierarchy.
+      const isSameNameProxy =
+        child.parent instanceof THREE.Bone && child.parent.name === child.name;
+      if (isSameNameProxy) return children;
+
       return [{
         id: child.uuid,
         name: child.name || "Unnamed bone",
@@ -454,6 +460,13 @@ function collectBoneHierarchy(object: THREE.Object3D): BoneNode[] {
 
     return children;
   });
+}
+
+function countBoneHierarchy(nodes: BoneNode[]): number {
+  return nodes.reduce(
+    (count, node) => count + 1 + countBoneHierarchy(node.children),
+    0,
+  );
 }
 
 function filterBoneHierarchy(nodes: BoneNode[], query: string): BoneNode[] {
@@ -1839,8 +1852,9 @@ export default function App() {
 
           frameObject();
           setHasBones(modelHasBones);
-          setBoneHierarchy(collectBoneHierarchy(model));
-          setBoneCount(modelBoneCount);
+          const canonicalBoneHierarchy = collectBoneHierarchy(model);
+          setBoneHierarchy(canonicalBoneHierarchy);
+          setBoneCount(countBoneHierarchy(canonicalBoneHierarchy));
           setPanelOpen(
             modelHasBones && !window.matchMedia("(max-width: 640px)").matches,
           );
