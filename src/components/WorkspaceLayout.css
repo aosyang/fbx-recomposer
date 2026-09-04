@@ -1,0 +1,715 @@
+.workspace-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #343b42;
+  border-radius: 7px;
+  background: #171b1f;
+}
+
+.workspace-switcher button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #929ca5;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workspace-switcher button:hover { color: #e6ebef; }
+.workspace-switcher button.is-active { background: #303840; color: #fff; }
+
+.viewer.workspace-animation {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 34vw);
+}
+
+.workspace-viewer .viewer-left {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-animation .viewer-left {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.workspace-animation .viewport-stage {
+  min-height: 0;
+}
+
+.workspace-animation .animation-workspace-panel {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  display: grid;
+  grid-template-rows: auto minmax(220px, 1fr) auto;
+  gap: 12px;
+  overflow: auto;
+  border-right: 1px solid #2e343a;
+  background: #111519;
+}
+
+.workspace-animation .viewer-left {
+  grid-column: 2;
+}
+
+.workspace-animation .viewport-stage {
+  height: 100%;
+}
+
+.workspace-animation .help { display: none; }
+
+.animation-workspace-heading,
+.animation-workspace-diagnostics {
+  border: 1px solid #31383f;
+  border-radius: 8px;
+  background: #181d22;
+  padding: 12px 14px;
+}
+
+.animation-workspace-heading h2,
+.animation-workspace-diagnostics h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.animation-workspace-heading span {
+  display: block;
+  margin-top: 3px;
+  color: #8f99a3;
+  font-size: 11px;
+}
+
+.animation-workspace-stack {
+  min-height: 220px;
+}
+
+.animation-workspace-diagnostics .animation-analysis {
+  margin-top: 10px;
+}
+
+.viewer.workspace-animation.has-panel {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 34vw);
+}
+
+.viewer.workspace-animation .panel-resizer,
+.viewer.workspace-animation .hierarchy-panel {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .viewer.workspace-animation {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(360px, 1fr) minmax(260px, 42vh);
+  }
+
+  .workspace-animation .animation-workspace-panel {
+    grid-column: 1;
+    grid-row: 1;
+    border-right: 0;
+    border-bottom: 1px solid #2e343a;
+  }
+
+  .workspace-animation .viewer-left {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+
+
+/* Compact desktop animation workspace */
+@media (min-width: 901px) {
+  .workspace-animation .animation-workspace-panel {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-content: stretch;
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  .animation-workspace-heading {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 2px 4px 0;
+  }
+
+  .animation-workspace-heading h2 {
+    font-size: 15px;
+  }
+
+  .animation-workspace-stack {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace-animation .viewer-left {
+    grid-template-rows: minmax(0, 1fr) minmax(260px, 1fr);
+  }
+
+  .workspace-animation .timeline-control {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "transport meta"
+      "scrubber scrubber";
+    gap: 8px 10px;
+  }
+
+  .workspace-animation .timeline-transport { grid-area: transport; }
+  .workspace-animation .timeline-meta { grid-area: meta; }
+  .workspace-animation .timeline-scrubber {
+    grid-area: scrubber;
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .workspace-animation .animation-workspace-diagnostics {
+    margin: 0;
+  }
+
+  .workspace-animation .animation-fix-inspector {
+    margin: 0;
+    height: 100%;
+    box-sizing: border-box;
+  }
+}
+
+.animation-workspace-diagnostics {
+  flex: 0 0 auto;
+}
+
+.animation-workspace-diagnostics .animation-analysis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.animation-workspace-diagnostics .animation-analysis > div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #30373d;
+  border-radius: 6px;
+  background: #12171b;
+}
+
+.animation-workspace-diagnostics .animation-analysis dt {
+  color: #7f8b96;
+  font-size: 10px;
+}
+
+.animation-workspace-diagnostics .animation-analysis dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: #eef2f5;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mobile workspace layout */
+@media (max-width: 640px) {
+  .app-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  .topbar {
+    display: block;
+    padding: 8px 10px;
+    min-height: 0;
+  }
+
+  .topbar-left {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "brand switcher"
+      "actions actions";
+    gap: 8px 10px;
+    width: 100%;
+  }
+
+  .brand {
+    grid-area: brand;
+    align-self: center;
+  }
+
+  .workspace-switcher {
+    grid-area: switcher;
+    display: flex;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .workspace-switcher button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 6px 8px;
+    line-height: 1.15;
+    white-space: normal;
+  }
+
+  .file-actions {
+    grid-area: actions;
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .file-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .file-actions > *,
+  .file-actions > button,
+  .open-model-trigger {
+    flex: 0 0 auto;
+    min-height: 44px;
+  }
+
+  /* Display remains available on larger screens; hide it on phones to keep the primary bar usable. */
+  .viewport-display {
+    display: none;
+  }
+
+  .viewer.workspace-viewer {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace-viewer .viewer-left,
+  .workspace-viewer .viewport-stage {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .viewer.workspace-animation {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, auto);
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .workspace-animation .animation-workspace-panel {
+    grid-column: 1;
+    grid-row: 1;
+    display: grid;
+    grid-template-rows: auto auto auto;
+    gap: 10px;
+    padding: 10px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid #2e343a;
+  }
+
+  .animation-workspace-heading,
+  .animation-workspace-diagnostics {
+    padding: 10px 12px;
+  }
+
+  .animation-workspace-stack {
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    overflow: visible;
+  }
+
+  .workspace-animation .viewer-left {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 360px;
+    height: auto;
+  }
+
+  .workspace-animation .viewport-stage {
+    min-height: 360px;
+    height: 100%;
+  }
+
+  .workspace-animation .timeline-control {
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 10px;
+  }
+
+  .workspace-animation .file-pill {
+    max-width: calc(100% - 20px);
+  }
+
+  .animation-workspace-diagnostics .animation-analysis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 430px) {
+  .brand > span:not(.brand-mark) {
+    display: none;
+  }
+
+  .topbar-left {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .workspace-switcher button {
+    font-size: 11px;
+  }
+
+  .animation-workspace-diagnostics .animation-analysis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+
+/* Mobile second-pass fixes */
+@media (max-width: 640px) {
+  .topbar {
+    display: block;
+    padding: 8px 10px;
+  }
+
+  .viewport-display {
+    display: none;
+  }
+
+  .timeline-control {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "transport meta"
+      "scrubber scrubber";
+    min-height: 96px;
+    gap: 8px 10px;
+  }
+
+  .timeline-transport { grid-area: transport; }
+  .timeline-meta {
+    grid-area: meta;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .timeline-preview-option {
+    justify-self: start;
+  }
+
+  .timeline-scrubber {
+    grid-area: scrubber;
+    grid-column: auto;
+    width: 100%;
+  }
+
+  .workspace-viewer .timeline-control,
+  .workspace-animation .timeline-control {
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 10px;
+  }
+
+  .viewport-stage.has-timeline .viewport {
+    bottom: 132px;
+  }
+}
+
+@media (max-width: 430px) {
+  .file-actions > .secondary-button {
+    display: none;
+  }
+
+  .file-actions {
+    overflow: visible;
+  }
+
+  .timeline-meta-copy > span:first-child {
+    max-width: 150px;
+  }
+}
+
+
+/* Mobile compact refinement */
+.workspace-label-mobile {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .topbar-left {
+    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-areas:
+      "brand actions"
+      "switcher switcher";
+    gap: 8px 10px;
+  }
+
+  .file-actions {
+    justify-content: flex-end;
+    overflow: visible;
+  }
+
+  .workspace-switcher {
+    min-height: 44px;
+  }
+
+  .workspace-switcher button {
+    min-height: 40px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+
+  .workspace-label-desktop {
+    display: none;
+  }
+
+  .workspace-label-mobile {
+    display: inline;
+  }
+
+  .timeline-control {
+    min-height: 88px;
+    padding: 8px 10px;
+    gap: 5px 10px;
+  }
+
+  .timeline-meta {
+    gap: 2px;
+  }
+
+  .timeline-meta-copy {
+    gap: 1px;
+  }
+
+  .timeline-scrubber {
+    align-self: center;
+  }
+
+  .viewport-stage.has-timeline .viewport {
+    bottom: 118px;
+  }
+}
+
+@media (max-width: 430px) {
+  .file-actions > .secondary-button {
+    display: none;
+  }
+
+  .open-model-trigger {
+    min-width: 92px;
+  }
+
+  .timeline-control {
+    min-height: 84px;
+    padding: 7px 9px;
+  }
+}
+
+@media (max-width: 900px) {
+  .workspace-animation .viewer-left {
+    grid-template-rows: minmax(360px, 48dvh) auto;
+  }
+  .workspace-animation .animation-workspace-diagnostics { margin: 10px; }
+}
+
+
+.animation-fix-inspector {
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #31383f;
+  border-radius: 8px;
+  background: #181d22;
+}
+
+.animation-fix-inspector-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #30373d;
+}
+.animation-fix-inspector-heading h3 { margin: 0; font-size: 13px; }
+.animation-fix-inspector-heading span { color: #8f99a3; font-size: 11px; }
+
+.animation-fix-inspector-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+.animation-fix-inspector-fields label { display: grid; gap: 6px; }
+.animation-fix-inspector-fields label > span { color: #9ca6ae; font-size: 11px; }
+.animation-fix-inspector-fields select,
+.animation-fix-inspector-fields input {
+  min-height: 34px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #39434b;
+  border-radius: 5px;
+  background: #11161a;
+  color: #e9eef1;
+  padding: 6px 8px;
+}
+.animation-fix-inspector-fields p { margin: 2px 0 0; color: #7f8b94; font-size: 11px; line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .workspace-animation .animation-fix-inspector { margin: 10px; }
+}
+
+
+/* Root Motion analysis */
+.animation-diagnostics-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.animation-diagnostics-heading > span {
+  color: #8f99a3;
+  font-size: 11px;
+}
+
+.root-motion-analysis {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.root-motion-analysis-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #8f99a3;
+  font-size: 10px;
+}
+
+.root-motion-analysis-summary > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.root-motion-analysis-summary > span + span::before {
+  content: "-";
+  margin-right: 8px;
+  color: #59636c;
+}
+
+.root-motion-chart-card {
+  min-width: 0;
+  padding: 8px 9px 5px;
+  border: 1px solid #30373d;
+  border-radius: 6px;
+  background: #12171b;
+}
+
+.root-motion-chart-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 3px;
+  font-size: 10px;
+}
+
+.root-motion-chart-legend {
+  display: flex;
+  gap: 9px;
+  font-size: 9px;
+}
+
+.root-motion-chart-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+  background: currentColor;
+}
+
+.root-motion-chart {
+  display: block;
+  width: 100%;
+  height: 126px;
+  overflow: visible;
+}
+
+.root-motion-series {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.root-motion-series.axis-x,
+.root-motion-chart-legend .axis-x { color: #78b7ff; stroke: #78b7ff; }
+.root-motion-series.axis-z,
+.root-motion-chart-legend .axis-z { color: #f0b56a; stroke: #f0b56a; }
+.root-motion-series.axis-yaw,
+.root-motion-chart-legend .axis-yaw { color: #b995ff; stroke: #b995ff; }
+.chart-grid-line { stroke: #374047; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart-zero-line { stroke: #56616a; stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+.chart-axis-label,
+.chart-value-label { fill: #78838d; font-size: 9px; }
+
+.root-motion-analysis-note {
+  color: #74808a;
+  font-size: 9px;
+}
+
+@media (min-width: 901px) {
+  .workspace-animation .animation-workspace-diagnostics {
+    min-height: 0;
+    max-height: min(48vh, 430px);
+    overflow: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .root-motion-analysis-summary {
+    flex-wrap: wrap;
+  }
+  .root-motion-chart { height: 118px; }
+}
+
+.root-motion-series.estimated { opacity: .62; stroke-dasharray: 5 4; }
+.root-motion-series.fixed { opacity: 1; stroke-width: 2.2; }
+.root-motion-chart-legend .estimated { opacity: .72; }
+.root-motion-chart-legend .fixed { font-weight: 600; }
+
+
+/* Inline animation-fix configuration layout */
+@media (min-width: 901px) {
+  .workspace-animation .animation-workspace-panel {
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .animation-workspace-stack {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  .workspace-animation .viewer-left {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .workspace-animation .animation-fix-inspector {
+    display: none;
+  }
+  .animation-workspace-diagnostics {
+    min-height: 0;
+    overflow: auto;
+  }
+}

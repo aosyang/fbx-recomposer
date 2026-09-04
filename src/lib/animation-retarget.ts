@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { collectCanonicalBones } from "./fbx-document/skeleton";
 
 function getTrackTargetName(trackName: string) {
   try {
@@ -19,28 +20,6 @@ function isTransformTrack(track: THREE.KeyframeTrack) {
   } catch {
     return false;
   }
-}
-
-function collectCanonicalBones(root: THREE.Object3D) {
-  const result = new Map<string, THREE.Bone>();
-  root.traverse((child) => {
-    if (!(child instanceof THREE.Bone) || !child.name) return;
-
-    // FastFBXLoader creates same-name identity proxy bones for skin clusters.
-    // They are parented under the real bone with the same name. Animating a
-    // proxy changes the skin's bind-relative transform twice; the canonical
-    // hierarchy bone is the instance whose parent is not a same-name Bone.
-    const isSameNameProxy =
-      child.parent instanceof THREE.Bone && child.parent.name === child.name;
-    if (isSameNameProxy) return;
-
-    const existing = result.get(child.name);
-    if (existing && existing !== child) {
-      throw new Error(`Multiple canonical FBX bones named ${child.name}`);
-    }
-    result.set(child.name, child);
-  });
-  return result;
 }
 
 function cloneTrackForTarget(track: THREE.KeyframeTrack, target: THREE.Object3D) {

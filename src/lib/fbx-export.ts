@@ -4,6 +4,14 @@ import {
   FbxNode,
   FbxProperty,
 } from "./binary-fbx";
+import { objectId, objectType, topNode } from "./fbx-document/objects";
+import { connectionIds } from "./fbx-document/connections";
+import { collectUniqueNonMeshModelIdsByName } from "./fbx-document/skeleton";
+import {
+  ANIMATION_OBJECT_TYPES,
+  appendRemappedAnimationGraph,
+  isAnimationObject,
+} from "./fbx-document/animation";
 
 export type FbxExportSelection = {
   character: boolean;
@@ -15,15 +23,9 @@ export type FbxExportAvailability = {
   animation: boolean;
 };
 
-const ANIMATION_OBJECT_TYPES = new Set([
-  "AnimationStack",
-  "AnimationLayer",
-  "AnimationCurveNode",
-  "AnimationCurve",
-]);
-
 function cloneValue(value: unknown): unknown {
   if (value instanceof Uint8Array) return value.slice();
+  if (Array.isArray(value)) return value.slice();
   return value;
 }
 
@@ -54,51 +56,6 @@ export function cloneBinaryFbxDocument(
     document.nodes.map(cloneNode),
     document.footer.slice(),
   );
-}
-
-function topNode(document: BinaryFbxDocument, name: string): FbxNode | undefined {
-  return document.nodes.find((node) => node.name === name);
-}
-
-function scalarId(property: FbxProperty | undefined): bigint | null {
-  if (!property) return null;
-  if (typeof property.value === "bigint") return property.value;
-  if (typeof property.value === "number" && Number.isFinite(property.value)) {
-    return BigInt(Math.trunc(property.value));
-  }
-  return null;
-}
-
-function objectId(node: FbxNode): bigint | null {
-  return scalarId(node.properties[0]);
-}
-
-function objectType(node: FbxNode): string {
-  return typeof node.properties[2]?.value === "string"
-    ? node.properties[2].value
-    : "";
-}
-
-function visibleObjectName(node: FbxNode): string {
-  const raw =
-    typeof node.properties[1]?.value === "string" ? node.properties[1].value : "";
-  const marker = raw.indexOf("\u0000\u0001");
-  const withoutClass = marker >= 0 ? raw.slice(0, marker) : raw;
-  const namespace = withoutClass.lastIndexOf("::");
-  return namespace >= 0 ? withoutClass.slice(namespace + 2) : withoutClass;
-}
-
-function connectionIds(node: FbxNode): [bigint, bigint] | null {
-  if (node.name !== "C") return null;
-  const source = scalarId(node.properties[1]);
-  const target = scalarId(node.properties[2]);
-  if (source === null || target === null) return null;
-  return [source, target];
-}
-
-function setScalarId(property: FbxProperty | undefined, value: bigint): void {
-  if (!property) throw new BinaryFbxError("FBX object is missing its ID property");
-  property.replaceScalar(value);
 }
 
 function updateDefinitions(document: BinaryFbxDocument): void {
@@ -203,7 +160,7 @@ export function createCharacterOnlyDocument(
 
   const removedIds = new Set<string>();
   objects.children = objects.children.filter((node) => {
-    if (!ANIMATION_OBJECT_TYPES.has(node.name)) return true;
+    if (!isAnimationObject(node)) return true;
     const id = objectId(node);
     if (id !== null) removedIds.add(id.toString());
     return false;
@@ -252,7 +209,7 @@ export function createAnimationOnlyDocument(
     let keep = false;
     if (node.name === "Model") keep = keptModelIds.has(idKey);
     else if (node.name === "NodeAttribute") keep = keptNodeAttributeIds.has(idKey);
-    else if (ANIMATION_OBJECT_TYPES.has(node.name)) keep = true;
+    else if (isAnimationObject(node)) keep = true;
     if (keep && id !== null) keepIds.add(idKey);
     return keep;
   });
@@ -285,83 +242,15 @@ export function mergeCharacterAndAnimationDocuments(
     throw new BinaryFbxError("FBX Objects/Connections nodes are required for animation merge");
   }
 
-  const targetModelIds = new Map<string, bigint>();
-  const duplicateTargetModelNames = new Set<string>();
-  for (const node of targetObjects.children) {
-    if (node.name !== "Model" || objectType(node) === "Mesh") continue;
-    const id = objectId(node);
-    const name = visibleObjectName(node);
-    if (id === null || !name) continue;
-    if (targetModelIds.has(name)) duplicateTargetModelNames.add(name);
-    else targetModelIds.set(name, id);
-  }
-  for (const name of duplicateTargetModelNames) targetModelIds.delete(name);
-
-  const sourceModelsById = new Map<string, string>();
-  for (const node of sourceObjects.children) {
-    if (node.name !== "Model") continue;
-    const id = objectId(node);
-    if (id !== null) sourceModelsById.set(id.toString(), visibleObjectName(node));
-  }
-
-  let maxId = 0n;
-  for (const node of targetObjects.children) {
-    const id = objectId(node);
-    if (id !== null && id > maxId) maxId = id;
-  }
-
-  const animationIdMap = new Map<string, bigint>();
-  const animationNodes = sourceObjects.children.filter((node) =>
-    ANIMATION_OBJECT_TYPES.has(node.name),
+  const targetModelIds = collectUniqueNonMeshModelIdsByName(targetObjects.children);
+  appendRemappedAnimationGraph(
+    sourceObjects.children,
+    sourceConnections.children,
+    targetObjects.children,
+    targetConnections.children,
+    targetModelIds,
+    cloneNode,
   );
-  for (const node of animationNodes) {
-    const sourceId = objectId(node);
-    if (sourceId === null) throw new BinaryFbxError(`${node.name} is missing an object ID`);
-    maxId += 1n;
-    const cloned = cloneNode(node);
-    setScalarId(cloned.properties[0], maxId);
-    animationIdMap.set(sourceId.toString(), maxId);
-    targetObjects.children.push(cloned);
-  }
-
-  const mapEndpoint = (id: bigint): bigint | null => {
-    if (id === 0n) return 0n;
-    const animationId = animationIdMap.get(id.toString());
-    if (animationId !== undefined) return animationId;
-    const modelName = sourceModelsById.get(id.toString());
-    if (modelName !== undefined) return targetModelIds.get(modelName) ?? null;
-    return null;
-  };
-
-  for (const connection of sourceConnections.children) {
-    const ids = connectionIds(connection);
-    if (!ids) continue;
-    const touchesAnimation =
-      animationIdMap.has(ids[0].toString()) || animationIdMap.has(ids[1].toString());
-    if (!touchesAnimation) continue;
-
-    const mappedSource = mapEndpoint(ids[0]);
-    const mappedTarget = mapEndpoint(ids[1]);
-    if (mappedSource === null || mappedTarget === null) {
-      const missingModelId = sourceModelsById.has(ids[0].toString())
-        ? ids[0]
-        : sourceModelsById.has(ids[1].toString())
-          ? ids[1]
-          : null;
-      if (missingModelId !== null) {
-        const name = sourceModelsById.get(missingModelId.toString()) ?? "unknown";
-        throw new BinaryFbxError(
-          `animation target ${name} is missing or ambiguous in the character FBX`,
-        );
-      }
-      continue;
-    }
-
-    const cloned = cloneNode(connection);
-    setScalarId(cloned.properties[1], mappedSource);
-    setScalarId(cloned.properties[2], mappedTarget);
-    targetConnections.children.push(cloned);
-  }
 
   mergeDefinitionTemplates(target, source, ANIMATION_OBJECT_TYPES);
   cloneTakesFrom(target, source);

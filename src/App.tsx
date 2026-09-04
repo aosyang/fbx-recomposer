@@ -1,7 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { MotionStackConfig, MotionOperationKind } from "./components/AnimationFixStack";
+import AnimationWorkspacePanel from "./components/AnimationWorkspacePanel";
+import WorkspaceSwitcher, { type AppWorkspace } from "./components/WorkspaceSwitcher";
 import { FBXLoader } from "./loaders/FastFBXLoader.js";
 import { retargetClipToCanonicalBones } from "./lib/animation-retarget";
+import {
+  repairAnimationLoop,
+  repairAnimationLoopTranslationVelocity,
+  type AnimationLoopFixMode,
+} from "./lib/animation-loop-fix";
+import { analyzeAnimationLoop, type AnimationLoopRootPolicy } from "./lib/animation-loop-analysis";
+import {
+  mergeMotionDecompositionReports,
+  processAnimationMotionDecomposition,
+  type MotionDecompositionBaseMode,
+  type MotionDecompositionReport,
+} from "./lib/animation-motion-decomposition";
+import { analyzeRootMotion, extractRootMotionFromHips, type RootMotionAnalysis, type RootMotionExtractionMode, type RootMotionExtractionReport, type RootMotionYawMode } from "./lib/animation-root-motion";
+import {
+  analyzeAnimationLoopContact,
+  repairAnimationLoopContact,
+  type AnimationContactLoopAnalysis,
+} from "./lib/animation-contact-loop-fix";
+import {
+  restoreBinaryFbxAnimationCurves,
+  syncBinaryFbxAnimationFromThreeClips,
+} from "./lib/fbx-animation-loop-fix";
 import {
   readBinaryFbx,
   writeBinaryFbx,
@@ -309,7 +334,7 @@ function createBrowserResourceManager(files: File[]) {
 
   manager.addHandler(/\.tga$/i, new TGALoader(manager));
   manager.onError = (url) => {
-    console.warn(`[FBX Viewer] Texture resource failed to load: ${url}`);
+    console.warn(`[FBX Recomposer] Texture resource failed to load: ${url}`);
   };
   manager.onLoad = () => {
     if (resourceFiles.length > 0 || resolutionLog.length > 0) {
@@ -317,7 +342,7 @@ function createBrowserResourceManager(files: File[]) {
         result[item.status] = (result[item.status] ?? 0) + 1;
         return result;
       }, {});
-      console.info("[FBX Viewer] Texture resource matching", {
+      console.info("[FBX Recomposer] Texture resource matching", {
         supplied: resourceFiles.length,
         counts,
         resolutions: resolutionLog,
@@ -641,6 +666,8 @@ export default function App() {
   const selectBoneRef = useRef<(boneId: string) => void>(() => undefined);
   const frameObjectRef = useRef<() => void>(() => undefined);
   const saveFbxRef = useRef<(selection: FbxExportSelection) => void>(() => undefined);
+  const fixAnimationLoopRef = useRef<(mode: AnimationLoopFixMode, rootPolicy: AnimationLoopRootPolicy) => void>(() => undefined);
+  const applyAnimationFixRef = useRef<(config: MotionStackConfig) => void>(() => undefined);
   const seekAnimationRef = useRef<(time: number) => void>(() => undefined);
   const setAnimationPlayingRef = useRef<(playing: boolean) => void>(
     () => undefined,
@@ -654,6 +681,7 @@ export default function App() {
   const setMaterialRenderModeRef = useRef<(mode: MaterialRenderMode) => void>(
     () => undefined,
   );
+  const [workspace, setWorkspace] = useState<AppWorkspace>("viewer");
   const [loadState, setLoadState] = useState<LoadState>("empty");
   const [fileName, setFileName] = useState("");
   const [exportAvailability, setExportAvailability] =
@@ -675,6 +703,43 @@ export default function App() {
   const [displayMenuOpen, setDisplayMenuOpen] = useState(false);
   const [animationImport, setAnimationImport] =
     useState<AnimationImportPreview | null>(null);
+  const [animationLoopFixMode, setAnimationLoopFixMode] =
+    useState<AnimationLoopFixMode>("cyclic");
+  const [animationLoopRootPolicy, setAnimationLoopRootPolicy] =
+    useState<AnimationLoopRootPolicy>("auto");
+  const [animationRootMotionEnabled, setAnimationRootMotionEnabled] = useState(false);
+  const [animationRootMotionMode, setAnimationRootMotionMode] =
+    useState<RootMotionExtractionMode>("velocity-guided");
+  const [animationRootMotionSmoothingWindow, setAnimationRootMotionSmoothingWindow] = useState(5);
+  const [animationRootMotionVelocityTolerance, setAnimationRootMotionVelocityTolerance] = useState(0.2);
+  const [animationRootMotionExtractYaw, setAnimationRootMotionExtractYaw] = useState(false);
+  const [animationRootMotionYawMode, setAnimationRootMotionYawMode] = useState<RootMotionYawMode>("rdp");
+  const [animationRootMotionYawToleranceDegrees, setAnimationRootMotionYawToleranceDegrees] = useState(1);
+  const [animationLoopFixEnabled, setAnimationLoopFixEnabled] = useState(false);
+  const [animationDecompositionEnabled, setAnimationDecompositionEnabled] = useState(false);
+  const [animationDecompositionBaseMode, setAnimationDecompositionBaseMode] = useState<MotionDecompositionBaseMode>("preserve");
+  const [animationDecompositionLowGain, setAnimationDecompositionLowGain] = useState(1);
+  const [animationDecompositionMidGain, setAnimationDecompositionMidGain] = useState(1);
+  const [animationDecompositionFineGain, setAnimationDecompositionFineGain] = useState(1);
+  const [animationDecompositionReport, setAnimationDecompositionReport] = useState<MotionDecompositionReport | null>(null);
+  const [selectedMotionOperation, setSelectedMotionOperation] = useState<MotionOperationKind>("rootMotion");
+  const selectedMotionOperationRef = useRef<MotionOperationKind>("rootMotion");
+  const [animationRootMotionAnalysis, setAnimationRootMotionAnalysis] = useState<RootMotionAnalysis | null>(null);
+  const [animationAppliedRootMotionAnalysis, setAnimationAppliedRootMotionAnalysis] = useState<RootMotionAnalysis | null>(null);
+  const [animationLoopAnalysis, setAnimationLoopAnalysis] =
+    useState<ReturnType<typeof analyzeAnimationLoop> | null>(null);
+  const [animationAppliedLoopAnalysis, setAnimationAppliedLoopAnalysis] =
+    useState<ReturnType<typeof analyzeAnimationLoop> | null>(null);
+  const [animationContactAnalysis, setAnimationContactAnalysis] =
+    useState<AnimationContactLoopAnalysis | null>(null);
+
+  useEffect(() => {
+    selectedMotionOperationRef.current = selectedMotionOperation;
+  }, [selectedMotionOperation]);
+
+  useEffect(() => {
+    applyAnimationFixRef.current({ rootMotion: { enabled: animationRootMotionEnabled, mode: animationRootMotionMode, velocitySmoothingWindow: animationRootMotionSmoothingWindow, velocityTolerance: animationRootMotionVelocityTolerance, extractYaw: animationRootMotionExtractYaw, yawMode: animationRootMotionYawMode, yawToleranceDegrees: animationRootMotionYawToleranceDegrees }, decomposition: { enabled: animationDecompositionEnabled, baseMode: animationDecompositionBaseMode, lowGain: animationDecompositionLowGain, midGain: animationDecompositionMidGain, fineGain: animationDecompositionFineGain }, loopFix: { enabled: animationLoopFixEnabled, mode: animationLoopFixMode, rootPolicy: animationLoopRootPolicy } });
+  }, [animationRootMotionEnabled, animationRootMotionMode, animationRootMotionSmoothingWindow, animationRootMotionVelocityTolerance, animationRootMotionExtractYaw, animationRootMotionYawMode, animationRootMotionYawToleranceDegrees, animationDecompositionEnabled, animationDecompositionBaseMode, animationDecompositionLowGain, animationDecompositionMidGain, animationDecompositionFineGain, animationLoopFixEnabled, animationLoopFixMode, animationLoopRootPolicy]);
   const [animationModelAlternative, setAnimationModelAlternative] = useState<{
     file: File;
     resources: File[];
@@ -757,15 +822,39 @@ export default function App() {
     let releaseModelResources: () => void = () => {};
     let mixer: THREE.AnimationMixer | null = null;
     let animationActions: THREE.AnimationAction[] = [];
+    let pristineAnimationClips: THREE.AnimationClip[] = [];
+    let loadedAnimationBinaryBaseline: BinaryFbxDocument | null = null;
+    let activeAnimationBinaryBaseline: BinaryFbxDocument | null = null;
     let animationDuration = 0;
     let animationClipName = "";
     let animationFrameBoundsRootMotion: THREE.Box3 | null = null;
     let animationFrameBoundsInPlace: THREE.Box3 | null = null;
     let lastTimelineUpdate = 0;
     let skeletonHelper: THREE.SkeletonHelper | null = null;
+    let rootMotionPreviewBone: THREE.Bone | null = null;
     let selectedBone: THREE.Bone | null = null;
     let showSelectedBoneName = false;
     const projectedBonePosition = new THREE.Vector3();
+    const rootBoneWorldQuaternion = new THREE.Quaternion();
+    const rootBoneMarker = new THREE.Group();
+    const rootBoneAxes = new THREE.AxesHelper(1);
+    const rootBoneAxesMaterial = rootBoneAxes.material;
+    const rootBoneAxesMaterials = Array.isArray(rootBoneAxesMaterial) ? rootBoneAxesMaterial : [rootBoneAxesMaterial];
+    rootBoneAxesMaterials.forEach((material) => {
+      material.depthTest = false;
+      material.transparent = true;
+      material.opacity = 0.95;
+    });
+    rootBoneAxes.renderOrder = 1001;
+    rootBoneMarker.add(rootBoneAxes);
+    const rootBoneOrigin = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.95 }),
+    );
+    rootBoneOrigin.renderOrder = 1002;
+    rootBoneMarker.add(rootBoneOrigin);
+    rootBoneMarker.visible = false;
+    scene.add(rootBoneMarker);
     let referenceTransforms = new Map<
       string,
       {
@@ -833,7 +922,7 @@ export default function App() {
         setMessage(`FBX download started: ${downloadName}`);
       } catch (error) {
         const detail = getErrorDetail(error);
-        console.error(`[FBX Viewer] FBX save failed: ${detail}`, error);
+        console.error(`[FBX Recomposer] FBX save failed: ${detail}`, error);
         setMessage(`FBX save failed: ${detail}`);
       }
     };
@@ -993,7 +1082,33 @@ export default function App() {
     const setActiveAnimation = (
       nextMixer: THREE.AnimationMixer,
       clips: THREE.AnimationClip[],
+      rememberPristineSource = true,
+      refocusViewport = true,
     ) => {
+      if (rememberPristineSource) pristineAnimationClips = clips.map((clip) => clip.clone());
+      const nextLoopAnalysis = model && pristineAnimationClips.length > 0
+        ? analyzeAnimationLoop(model, pristineAnimationClips)
+        : null;
+      setAnimationLoopAnalysis(nextLoopAnalysis);
+      rootMotionPreviewBone = nextLoopAnalysis?.rootBoneUuids
+        .map((uuid) => model?.getObjectByProperty("uuid", uuid))
+        .find((object): object is THREE.Bone => object instanceof THREE.Bone) ?? null;
+      setAnimationAppliedLoopAnalysis(null);
+      setAnimationContactAnalysis(
+        model && pristineAnimationClips[0] && nextLoopAnalysis?.rootMode === "preserve"
+          ? analyzeAnimationLoopContact(model, pristineAnimationClips[0])
+          : null,
+      );
+      try {
+        setAnimationRootMotionAnalysis(
+          model && pristineAnimationClips[0]
+            ? analyzeRootMotion(model, pristineAnimationClips[0], 30)
+            : null,
+        );
+      } catch (error) {
+        setAnimationRootMotionAnalysis(null);
+        console.info(`[FBX Recomposer] Root Motion analysis unavailable: ${getErrorDetail(error)}`);
+      }
       mixer = nextMixer;
       updatePreviewRootMotionTargets(clips);
       animationActions = clips.map((clip) =>
@@ -1013,14 +1128,229 @@ export default function App() {
         animationFrameBoundsRootMotion = null;
         animationFrameBoundsInPlace = null;
         console.warn(
-          `[FBX Viewer] Animation framing failed; falling back to current pose: ${getErrorDetail(error)}`,
+          `[FBX Recomposer] Animation framing failed; falling back to current pose: ${getErrorDetail(error)}`,
           error,
         );
       }
       applyPreviewRootMotionStrip();
       model?.updateWorldMatrix(true, true);
       syncAnimationTimeline(true);
-      frameObject();
+      if (refocusViewport) frameObject();
+    };
+
+    applyAnimationFixRef.current = (config: MotionStackConfig) => {
+      if (!model || pristineAnimationClips.length === 0) return;
+      const wasPlaying = animationActions.some((action) => !action.paused);
+      const previousTime = getAnimationTime();
+      let workingClips = pristineAnimationClips.map((clip) => clip.clone());
+      const rootMotionReports: RootMotionExtractionReport[] = [];
+
+      if (config.rootMotion.enabled) {
+        try {
+          workingClips = workingClips.map((sourceClip) => {
+            const result = extractRootMotionFromHips(model!, sourceClip, {
+              mode: config.rootMotion.mode,
+              fps: 30,
+              velocitySmoothingWindow: config.rootMotion.velocitySmoothingWindow,
+              velocityTolerance: config.rootMotion.velocityTolerance,
+              extractYaw: config.rootMotion.extractYaw,
+              yawMode: config.rootMotion.yawMode,
+              yawToleranceDegrees: config.rootMotion.yawToleranceDegrees,
+            });
+            rootMotionReports.push(result.report);
+            return result.clip;
+          });
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          setMessage(`Root Motion failed: ${detail}`);
+          console.error("[FBX Recomposer] Root Motion extraction failed", error);
+          return;
+        }
+      }
+
+      let repairedClips = workingClips;
+      let loopAnalysis: ReturnType<typeof analyzeAnimationLoop> | null = null;
+      let effectiveRootMode: AnimationLoopRootPolicy | null = null;
+      const decompositionReports: MotionDecompositionReport[] = [];
+      if (config.decomposition.enabled) {
+        const decompositionModel = model;
+        const rootAnalysisForDecomposition = analyzeAnimationLoop(decompositionModel, workingClips);
+        const rootBoneUuidsForDecomposition = new Set(rootAnalysisForDecomposition.rootBoneUuids);
+        workingClips = workingClips.map((sourceClip) => {
+          const result = processAnimationMotionDecomposition(
+            sourceClip,
+            {
+              baseMode: config.decomposition.baseMode,
+              lowGain: config.decomposition.lowGain,
+              midGain: config.decomposition.midGain,
+              fineGain: config.decomposition.fineGain,
+            },
+            (track) => {
+              try {
+                const parsed = THREE.PropertyBinding.parseTrackName(track.name);
+                const target = decompositionModel.getObjectByProperty("uuid", parsed.nodeName) ?? decompositionModel.getObjectByName(parsed.nodeName);
+                return target instanceof THREE.Bone && !rootBoneUuidsForDecomposition.has(target.uuid);
+              } catch {
+                return false;
+              }
+            },
+          );
+          decompositionReports.push(result.report);
+          return result.clip;
+        });
+      }
+      setAnimationDecompositionReport(config.decomposition.enabled ? mergeMotionDecompositionReports(decompositionReports) : null);
+      repairedClips = workingClips;
+
+      let repairedPositionTracks = 0;
+      let repairedQuaternionTracks = 0;
+      let contactRepairCount = 0;
+      let contactReport: ReturnType<typeof repairAnimationLoopContact>["report"] | null = null;
+
+      if (config.loopFix.enabled) {
+        loopAnalysis = analyzeAnimationLoop(model, workingClips);
+        effectiveRootMode = config.loopFix.rootPolicy === "auto"
+          ? loopAnalysis.rootMode
+          : config.loopFix.rootPolicy;
+        const rootBoneUuids = new Set(loopAnalysis.rootBoneUuids);
+        const coreClips = workingClips.map((sourceClip) => {
+          const result = repairAnimationLoop(sourceClip, (track) => {
+            try {
+              const parsed = THREE.PropertyBinding.parseTrackName(track.name);
+              const target =
+                model?.getObjectByProperty("uuid", parsed.nodeName) ??
+                model?.getObjectByName(parsed.nodeName);
+              if (!(target instanceof THREE.Bone)) return false;
+              return !(effectiveRootMode === "preserve" && rootBoneUuids.has(target.uuid));
+            } catch {
+              return false;
+            }
+          }, { mode: config.loopFix.mode });
+          repairedPositionTracks += result.report.repairedPositionTracks;
+          repairedQuaternionTracks += result.report.repairedQuaternionTracks;
+          return result.clip;
+        });
+
+        const velocityMatchedClips = (
+          config.loopFix.mode === "cyclic" && effectiveRootMode === "preserve"
+        ) ? coreClips.map((coreClip) => {
+          const result = repairAnimationLoopTranslationVelocity(coreClip, (track) => {
+            try {
+              if (!(track instanceof THREE.VectorKeyframeTrack) || !track.name.endsWith(".position")) {
+                return false;
+              }
+              const parsed = THREE.PropertyBinding.parseTrackName(track.name);
+              const target =
+                model?.getObjectByProperty("uuid", parsed.nodeName) ??
+                model?.getObjectByName(parsed.nodeName);
+              return target instanceof THREE.Bone && rootBoneUuids.has(target.uuid);
+            } catch {
+              return false;
+            }
+          });
+          repairedPositionTracks += result.report.repairedPositionTracks;
+          return result.clip;
+        }) : coreClips;
+
+        repairedClips = velocityMatchedClips.map((coreClip, index) => {
+          const sourceClip = workingClips[index];
+          if (
+            !sourceClip ||
+            effectiveRootMode !== "preserve" ||
+            !loopAnalysis?.artificialEndpointDetected
+          ) return coreClip;
+          const contact = analyzeAnimationLoopContact(model!, sourceClip);
+          if (!contact.detected || contact.confidence !== "high") return coreClip;
+          const result = repairAnimationLoopContact(model!, sourceClip, coreClip, contact);
+          if (result.report.applied) {
+            contactRepairCount += 1;
+            contactReport = result.report;
+            setAnimationContactAnalysis(contact);
+          }
+          return result.clip;
+        });
+      }
+
+      const binaryAnimationDocument = externalAnimationApplied
+        ? activeAnimationBinaryDocument
+        : loadedBinaryDocument;
+      const binaryBaseline = externalAnimationApplied
+        ? activeAnimationBinaryBaseline
+        : loadedAnimationBinaryBaseline;
+      if (binaryAnimationDocument && binaryBaseline) {
+        restoreBinaryFbxAnimationCurves(binaryAnimationDocument, binaryBaseline);
+      }
+      const binaryReport = binaryAnimationDocument
+        ? syncBinaryFbxAnimationFromThreeClips(binaryAnimationDocument, model, repairedClips)
+        : null;
+
+      clearCurrentAnimation();
+      const repairedMixer = new THREE.AnimationMixer(model);
+      setActiveAnimation(repairedMixer, repairedClips, false, false);
+      setAnimationAppliedLoopAnalysis(
+        config.loopFix.enabled && repairedClips.length > 0
+          ? analyzeAnimationLoop(model, repairedClips)
+          : null,
+      );
+      try {
+        setAnimationAppliedRootMotionAnalysis(
+          config.rootMotion.enabled && repairedClips[0]
+            ? analyzeRootMotion(model, repairedClips[0], 30)
+            : null,
+        );
+      } catch {
+        setAnimationAppliedRootMotionAnalysis(null);
+      }
+      seekAnimationRef.current(Math.min(previousTime, animationDuration));
+      setAnimationPlayingRef.current(wasPlaying);
+
+      const operations: string[] = [];
+      if (rootMotionReports.length > 0) {
+        const report = rootMotionReports[0];
+        operations.push(
+          `Root Motion ${report.mode}: ${report.hipsName} → ${report.rootName}, ` +
+          `${report.planarDistance.toFixed(3)} units, ${report.rootKeyCount} keys` + (config.rootMotion.extractYaw ? `, yaw ${report.extractedYawDegrees.toFixed(1)}° (${config.rootMotion.yawMode}, ${report.yawKeyCount} keys)` : ""),
+        );
+      }
+      if (config.decomposition.enabled) {
+        operations.push(`Motion Decompose ${config.decomposition.baseMode} base; detail ${config.decomposition.lowGain.toFixed(1)}/${config.decomposition.midGain.toFixed(1)}/${config.decomposition.fineGain.toFixed(1)}`);
+      }
+      if (config.loopFix.enabled) {
+        operations.push(`Loop Fix ${config.loopFix.mode}; root ${effectiveRootMode}`);
+      }
+      setMessage(operations.length > 0 ? `${operations.join("; ")}.` : "Motion processing cleared.");
+      console.info("[FBX Recomposer] Animation fix graph applied from pristine source", {
+        config,
+        rootMotion: rootMotionReports,
+        loop: loopAnalysis,
+        repairedPositionTracks,
+        repairedQuaternionTracks,
+        contactRepairCount,
+        contact: contactReport,
+        binary: binaryReport,
+      });
+    };
+
+    fixAnimationLoopRef.current = (mode: AnimationLoopFixMode, rootPolicy: AnimationLoopRootPolicy) => {
+      applyAnimationFixRef.current({
+        rootMotion: {
+          enabled: false,
+          mode: "velocity-guided",
+          velocitySmoothingWindow: 5,
+          velocityTolerance: 0.2,
+          extractYaw: false,
+          yawMode: "rdp",
+          yawToleranceDegrees: 1,
+        },
+        decomposition: {
+          enabled: false,
+          baseMode: "preserve",
+          lowGain: 1,
+          midGain: 1,
+          fineGain: 1,
+        },
+        loopFix: { enabled: true, mode, rootPolicy },
+      });
     };
 
     seekAnimationRef.current = (time: number) => {
@@ -1127,6 +1457,8 @@ export default function App() {
       animationClipName = "";
       animationFrameBoundsRootMotion = null;
       animationFrameBoundsInPlace = null;
+      rootMotionPreviewBone = null;
+      rootBoneMarker.visible = false;
       setAnimationTimeline(null);
 
       model.traverse((child) => {
@@ -1256,7 +1588,7 @@ export default function App() {
             pendingAnimationBinaryDocument = readBinaryFbx(sourceBuffer);
           } catch (error) {
             console.info(
-              `[FBX Viewer] Animation export unavailable for ${file.name}: ${getErrorDetail(error)}`,
+              `[FBX Recomposer] Animation export unavailable for ${file.name}: ${getErrorDetail(error)}`,
             );
           }
           pendingAnimationSource = new FBXLoader().parse(sourceBuffer, "");
@@ -1288,7 +1620,7 @@ export default function App() {
           }
         } catch (error) {
           console.error(
-            `[FBX Viewer] Animation FBX parse failed: ${getErrorDetail(error)}`,
+            `[FBX Recomposer] Animation FBX parse failed: ${getErrorDetail(error)}`,
             error,
           );
           setAnimationImport({
@@ -1325,6 +1657,9 @@ export default function App() {
       setActiveAnimation(mixer, [importedClip]);
       mixer.update(0);
       activeAnimationBinaryDocument = pendingAnimationBinaryDocument;
+      activeAnimationBinaryBaseline = pendingAnimationBinaryDocument
+        ? readBinaryFbx(writeBinaryFbx(pendingAnimationBinaryDocument))
+        : null;
       activeAnimationFileName = pendingAnimationFileName;
       externalAnimationApplied = true;
       const baseAvailability = analyzeFbxExportContents(loadedBinaryDocument);
@@ -1348,7 +1683,7 @@ export default function App() {
             });
           })
           .catch((error) => {
-            console.warn("[FBX Viewer] Could not persist animation locally", error);
+            console.warn("[FBX Recomposer] Could not persist animation locally", error);
           });
       }
       discardPendingAnimation();
@@ -1376,8 +1711,10 @@ export default function App() {
       setExportAvailability({ character: false, animation: false });
       setSaveDialog(null);
       loadedBinaryDocument = null;
+      loadedAnimationBinaryBaseline = null;
       loadedBinaryFileName = "";
       activeAnimationBinaryDocument = null;
+      activeAnimationBinaryBaseline = null;
       activeAnimationFileName = "";
       externalAnimationApplied = false;
       setMessage("Loading model…");
@@ -1423,6 +1760,8 @@ export default function App() {
           animationClipName = "";
           animationFrameBoundsRootMotion = null;
           animationFrameBoundsInPlace = null;
+          rootMotionPreviewBone = null;
+          rootBoneMarker.visible = false;
           releaseModelResources();
           const localResources = createBrowserResourceManager(resources);
           releaseModelResources = localResources.release;
@@ -1432,7 +1771,7 @@ export default function App() {
             binaryDocument = readBinaryFbx(sourceBuffer);
           } catch (error) {
             console.info(
-              `[FBX Viewer] Save FBX unavailable for ${file.name}: ${getErrorDetail(error)}`,
+              `[FBX Recomposer] Save FBX unavailable for ${file.name}: ${getErrorDetail(error)}`,
             );
           }
           const loader = new FBXLoader(localResources.manager)
@@ -1440,6 +1779,7 @@ export default function App() {
             .setMaxMorphTargets(MAX_RENDERED_MORPH_TARGETS);
           model = loader.parse(sourceBuffer, "");
           loadedBinaryDocument = binaryDocument;
+          loadedAnimationBinaryBaseline = readBinaryFbx(sourceBuffer.slice(0));
           loadedBinaryFileName = file.name;
           setExportAvailability(analyzeFbxExportContents(binaryDocument));
           loadStage = "model scene setup";
@@ -1470,6 +1810,8 @@ export default function App() {
           scene.add(model);
 
           if (modelHasBones) {
+            const markerSize = Math.max(getBoundsIncludingBones(model).getSize(new THREE.Vector3()).length() * 0.06, 0.05);
+            rootBoneMarker.scale.setScalar(markerSize);
             skeletonHelper = new THREE.SkeletonHelper(model);
             skeletonHelper.visible = !modelHasMesh;
             getSkeletonMaterials(skeletonHelper).forEach((material) => {
@@ -1510,7 +1852,7 @@ export default function App() {
                 });
               })
               .catch((error) => {
-                console.warn("[FBX Viewer] Could not persist model locally", error);
+                console.warn("[FBX Recomposer] Could not persist model locally", error);
               });
           }
           const pendingSceneAnimation = pendingSceneAnimationRef.current;
@@ -1523,7 +1865,7 @@ export default function App() {
           }
         } catch (error) {
           const detail = getErrorDetail(error);
-          console.error(`[FBX Viewer] ${loadStage} failed: ${detail}`, error);
+          console.error(`[FBX Recomposer] ${loadStage} failed: ${detail}`, error);
           setLoadState("error");
           setMessage(`${loadStage} failed: ${detail}`);
         }
@@ -1541,6 +1883,13 @@ export default function App() {
       }
       if (selectedBone) {
         selectedBone.getWorldPosition(selectionMarker.position);
+      }
+      const showRootMotionBone = selectedMotionOperationRef.current === "rootMotion" && rootMotionPreviewBone !== null;
+      rootBoneMarker.visible = showRootMotionBone;
+      if (showRootMotionBone && rootMotionPreviewBone) {
+        rootMotionPreviewBone.getWorldPosition(rootBoneMarker.position);
+        rootMotionPreviewBone.getWorldQuaternion(rootBoneWorldQuaternion);
+        rootBoneMarker.quaternion.copy(rootBoneWorldQuaternion);
       }
       controls.update();
       if (selectedBone && showSelectedBoneName) {
@@ -1573,6 +1922,14 @@ export default function App() {
       if (skeletonHelper) {
         disposeSkeletonHelper(skeletonHelper);
       }
+      rootBoneAxes.geometry.dispose();
+      rootBoneAxesMaterials.forEach((material) => material.dispose());
+      rootBoneOrigin.geometry.dispose();
+      if (Array.isArray(rootBoneOrigin.material)) {
+        rootBoneOrigin.material.forEach((material) => material.dispose());
+      } else {
+        rootBoneOrigin.material.dispose();
+      }
       if (pendingAnimationSource) disposeObject(pendingAnimationSource);
       if (model) {
         restoreOriginalMaterials(model);
@@ -1587,6 +1944,8 @@ export default function App() {
         selectionMarker.material.dispose();
       }
       saveFbxRef.current = () => undefined;
+      fixAnimationLoopRef.current = () => undefined;
+      applyAnimationFixRef.current = () => undefined;
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -1637,7 +1996,7 @@ export default function App() {
           persistLocalAsset: false,
         });
       } catch (error) {
-        console.warn("[FBX Viewer] Could not restore the last local scene", error);
+        console.warn("[FBX Recomposer] Could not restore the last local scene", error);
       }
     })();
 
@@ -1747,7 +2106,7 @@ export default function App() {
         error: "Open a rigged model first to use this animation FBX.",
       });
     } catch (error) {
-      console.error(`[FBX Viewer] FBX analysis failed: ${getErrorDetail(error)}`, error);
+      console.error(`[FBX Recomposer] FBX analysis failed: ${getErrorDetail(error)}`, error);
       setDropChoice({
         file,
         status: "error",
@@ -1778,7 +2137,7 @@ export default function App() {
       await routeFbxFile(fbx, resources);
     } catch (error) {
       const detail = getErrorDetail(error);
-      console.error(`[FBX Viewer] Resource archive failed: ${detail}`, error);
+      console.error(`[FBX Recomposer] Resource archive failed: ${detail}`, error);
       setLoadState("error");
       setMessage(`Texture archive failed: ${detail}`);
     }
@@ -1792,7 +2151,7 @@ export default function App() {
       await routeFbxFile(modelFile, resources);
     } catch (error) {
       const detail = getErrorDetail(error);
-      console.error(`[FBX Viewer] Asset folder load failed: ${detail}`, error);
+      console.error(`[FBX Recomposer] Asset folder load failed: ${detail}`, error);
       setLoadState("error");
       setMessage(`Asset folder failed: ${detail}`);
     }
@@ -1893,6 +2252,7 @@ export default function App() {
     stripRootMotionPreviewRef.current = nextValue;
     setStripRootMotionPreview(nextValue);
     if (animationTimeline) seekAnimationRef.current(animationTimeline.time);
+    frameObjectRef.current();
   }, [animationTimeline, stripRootMotionPreview]);
 
   const startPanelResize = useCallback(
@@ -1954,10 +2314,11 @@ export default function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="topbar-left">
-          <a className="brand" href="./" aria-label="FBX Viewer home">
+          <a className="brand" href="./" aria-label="FBX Recomposer home">
             <span className="brand-mark">F</span>
-            <span>FBX Viewer</span>
+            <span>FBX Recomposer</span>
           </a>
+          <WorkspaceSwitcher value={workspace} onChange={setWorkspace} />
           <div className="file-actions">
             <details className="open-model-menu">
               <summary className="primary-button open-model-trigger">Open</summary>
@@ -2116,8 +2477,8 @@ export default function App() {
       </header>
 
       <section
-        className={`viewer ${isDragging ? "is-dragging" : ""} ${
-          panelOpen ? "has-panel" : ""
+        className={`viewer workspace-${workspace} ${isDragging ? "is-dragging" : ""} ${
+          panelOpen && workspace === "viewer" ? "has-panel" : ""
         }`}
         onDragEnter={(event) => {
           event.preventDefault();
@@ -2139,7 +2500,60 @@ export default function App() {
           analyzeDroppedFile(droppedFiles[0]);
         }}
       >
-        <div className={`viewport-stage ${animationTimeline ? "has-timeline" : ""}`}> 
+        {workspace === "animation" && loadState === "ready" && (
+          <AnimationWorkspacePanel
+            hasAnimation={Boolean(animationTimeline)}
+            selectedOperation={selectedMotionOperation}
+            config={{
+              rootMotion: {
+                enabled: animationRootMotionEnabled,
+                mode: animationRootMotionMode,
+                velocitySmoothingWindow: animationRootMotionSmoothingWindow,
+                velocityTolerance: animationRootMotionVelocityTolerance,
+                extractYaw: animationRootMotionExtractYaw,
+                yawMode: animationRootMotionYawMode,
+                yawToleranceDegrees: animationRootMotionYawToleranceDegrees,
+              },
+              decomposition: {
+                enabled: animationDecompositionEnabled,
+                baseMode: animationDecompositionBaseMode,
+                lowGain: animationDecompositionLowGain,
+                midGain: animationDecompositionMidGain,
+                fineGain: animationDecompositionFineGain,
+              },
+              loopFix: {
+                enabled: animationLoopFixEnabled,
+                mode: animationLoopFixMode,
+                rootPolicy: animationLoopRootPolicy,
+              },
+            }}
+            rootMotionAnalysis={animationRootMotionAnalysis}
+            appliedRootMotionAnalysis={animationAppliedRootMotionAnalysis}
+            loopAnalysis={animationLoopAnalysis}
+            appliedLoopAnalysis={animationAppliedLoopAnalysis}
+            contactAnalysis={animationContactAnalysis}
+            decompositionReport={animationDecompositionReport}
+            onSelectedOperationChange={setSelectedMotionOperation}
+            onRootMotionEnabledChange={setAnimationRootMotionEnabled}
+            onDecompositionEnabledChange={setAnimationDecompositionEnabled}
+            onDecompositionBaseModeChange={setAnimationDecompositionBaseMode}
+            onDecompositionLowGainChange={setAnimationDecompositionLowGain}
+            onDecompositionMidGainChange={setAnimationDecompositionMidGain}
+            onDecompositionFineGainChange={setAnimationDecompositionFineGain}
+            onLoopFixEnabledChange={setAnimationLoopFixEnabled}
+            onRootMotionModeChange={setAnimationRootMotionMode}
+            onRootMotionSmoothingWindowChange={setAnimationRootMotionSmoothingWindow}
+            onRootMotionVelocityToleranceChange={setAnimationRootMotionVelocityTolerance}
+            onRootMotionExtractYawChange={setAnimationRootMotionExtractYaw}
+            onRootMotionYawModeChange={setAnimationRootMotionYawMode}
+            onRootMotionYawToleranceChange={setAnimationRootMotionYawToleranceDegrees}
+            onLoopModeChange={setAnimationLoopFixMode}
+            onLoopRootPolicyChange={setAnimationLoopRootPolicy}
+          />
+        )}
+
+        <div className="viewer-left">
+          <div className={`viewport-stage ${animationTimeline ? "has-timeline" : ""}`}>
           <div ref={viewportRef} className="viewport" />
           <div ref={boneLabelRef} className="selected-bone-label" hidden />
 
@@ -2279,7 +2693,7 @@ export default function App() {
                   <span aria-hidden="true" />
                   Frame
                 </button>
-                {hasBones && !panelOpen && (
+                {workspace === "viewer" && hasBones && !panelOpen && (
                   <button
                     className="hierarchy-reopen"
                     type="button"
@@ -2295,7 +2709,10 @@ export default function App() {
           )}
         </div>
 
-        {loadState === "ready" && hasBones && panelOpen && (
+
+        </div>
+
+        {workspace === "viewer" && loadState === "ready" && hasBones && panelOpen && (
           <>
             <div
               className="panel-resizer"

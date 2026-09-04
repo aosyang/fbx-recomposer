@@ -1938,3 +1938,230 @@ button {
     bottom: 122px;
   }
 }
+
+
+.timeline-loop-fix {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.timeline-loop-fix:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+
+.timeline-loop-fix-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bone-panel {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+
+.animation-tools-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px 12px 12px;
+  border-top: 1px solid #30363c;
+  background: #171a1d;
+}
+
+.animation-tools-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.animation-tools-header h3 {
+  margin: 0;
+  color: #f4f6f7;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.animation-tools-header span {
+  color: #7f8992;
+  font-size: 10px;
+}
+
+.animation-tools-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.animation-tools-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #8f99a2;
+  font-size: 10px;
+}
+
+.animation-tools-select {
+  width: 100%;
+  height: 30px;
+  padding: 0 24px 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  color: #e7ebee;
+  background: rgba(255, 255, 255, 0.06);
+  font: inherit;
+  font-size: 11px;
+}
+
+.animation-tools-select:hover:not(:disabled),
+.animation-tools-select:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.animation-tools-select:disabled {
+  opacity: 0.45;
+}
+
+.animation-analysis {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 9px;
+  border: 1px solid #2b3136;
+  border-radius: 7px;
+  background: #131619;
+}
+
+.animation-analysis > div {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.animation-analysis dt {
+  color: #747f88;
+  font-size: 10px;
+}
+
+.animation-analysis dd {
+  overflow: hidden;
+  margin: 0;
+  color: #cdd3d8;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animation-analysis dd.is-detected {
+  color: #7ef29a;
+}
+
+.animation-tools-empty {
+  padding: 8px 0;
+  color: #747f88;
+  font-size: 10px;
+}
+
+.animation-tools-fix {
+  height: 34px;
+  border: 1px solid rgba(126, 242, 154, 0.45);
+  border-radius: 7px;
+  color: #101713;
+  background: #7ef29a;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.animation-tools-fix:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.animation-tools-fix:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+@media (max-width: 720px) {
+  .animation-tools-panel {
+    max-height: 46%;
+    overflow-y: auto;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
+.timeline-loop-mode {
+  height: 28px;
+  padding: 0 22px 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  font: inherit;
+  font-size: 12px;
+}
+
+.timeline-loop-mode:hover,
+.timeline-loop-mode:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+
+/* Animation repair workspace: preview above, node graph below. */
+.viewer-left {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr) clamp(250px, 34vh, 360px);
+  overflow: hidden;
+}
+
+.viewer-left > .viewport-stage {
+  min-height: 0;
+}
+
+.viewer-left > .animation-tools-panel {
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-top: 1px solid #30363c;
+  background: #15181b;
+}
+
+.viewer-left > .animation-tools-panel .animation-fix-graph-shell {
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.viewer-left > .animation-tools-panel .animation-analysis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-height: 760px) {
+  .viewer-left {
+    grid-template-rows: minmax(0, 1fr) clamp(220px, 32vh, 300px);
+  }
+}
+
+@media (max-width: 900px) {
+  .viewer-left {
+    grid-template-rows: minmax(0, 1fr) clamp(230px, 38vh, 330px);
+  }
+  .viewer-left > .animation-tools-panel .animation-analysis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
