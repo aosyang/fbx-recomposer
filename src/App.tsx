@@ -2390,7 +2390,10 @@ export default function App() {
           <WorkspaceSwitcher value={workspace} onChange={setWorkspace} />
           <div className="file-actions">
             <details className="open-model-menu">
-              <summary className="primary-button open-model-trigger">Open</summary>
+              <summary className="primary-button open-model-trigger">
+                Open
+                <span className="display-menu-chevron" aria-hidden="true" />
+              </summary>
               <div className="open-model-menu-panel">
                 <button
                   type="button"
