@@ -639,6 +639,10 @@ export default function App() {
   const panelResizeRef = useRef<{ startX: number; startWidth: number } | null>(
     null,
   );
+  const animationLayoutResizeRef = useRef<{
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const assetFolderInputRef = useRef<HTMLInputElement>(null);
   const currentModelFileRef = useRef<File | null>(null);
@@ -698,6 +702,7 @@ export default function App() {
   const [boneCount, setBoneCount] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelWidth, setPanelWidth] = useState(260);
+  const [animationToolsWidth, setAnimationToolsWidth] = useState<number | null>(null);
   const [boneSearch, setBoneSearch] = useState("");
   const [treeCommand, setTreeCommand] = useState<TreeCommand | null>(null);
   const [displayMenuOpen, setDisplayMenuOpen] = useState(false);
@@ -2296,6 +2301,56 @@ export default function App() {
     [],
   );
 
+  const startAnimationLayoutResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      const panel = event.currentTarget.previousElementSibling;
+      if (!(panel instanceof HTMLElement)) return;
+
+      animationLayoutResizeRef.current = {
+        startX: event.clientX,
+        startWidth: panel.getBoundingClientRect().width,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.currentTarget.classList.add("is-active");
+      event.preventDefault();
+    },
+    [],
+  );
+
+  const resizeAnimationLayout = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const resize = animationLayoutResizeRef.current;
+      const viewer = event.currentTarget.parentElement;
+      if (!resize || !viewer) return;
+
+      const viewerWidth = viewer.getBoundingClientRect().width;
+      const minToolsWidth = 320;
+      const minPreviewWidth = 320;
+      const separatorWidth = 6;
+      const maxToolsWidth = Math.max(
+        minToolsWidth,
+        viewerWidth - minPreviewWidth - separatorWidth,
+      );
+      const nextWidth = resize.startWidth + event.clientX - resize.startX;
+      setAnimationToolsWidth(
+        Math.round(Math.min(maxToolsWidth, Math.max(minToolsWidth, nextWidth))),
+      );
+    },
+    [],
+  );
+
+  const stopAnimationLayoutResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      animationLayoutResizeRef.current = null;
+      event.currentTarget.classList.remove("is-active");
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [],
+  );
+
   const matchedBoneCount = animationImport?.matchedBones.length ?? 0;
   const unmatchedBoneCount = animationImport?.unmatchedBones.length ?? 0;
   const totalAnimatedBoneCount = matchedBoneCount + unmatchedBoneCount;
@@ -2480,6 +2535,13 @@ export default function App() {
         className={`viewer workspace-${workspace} ${isDragging ? "is-dragging" : ""} ${
           panelOpen && workspace === "viewer" ? "has-panel" : ""
         }`}
+        style={
+          workspace === "animation" && animationToolsWidth !== null
+            ? ({
+                "--animation-tools-width": `${animationToolsWidth}px`,
+              } as React.CSSProperties)
+            : undefined
+        }
         onDragEnter={(event) => {
           event.preventDefault();
           setIsDragging(true);
@@ -2549,6 +2611,48 @@ export default function App() {
             onRootMotionYawToleranceChange={setAnimationRootMotionYawToleranceDegrees}
             onLoopModeChange={setAnimationLoopFixMode}
             onLoopRootPolicyChange={setAnimationLoopRootPolicy}
+          />
+        )}
+
+        {workspace === "animation" && loadState === "ready" && (
+          <div
+            className="animation-workspace-main-resizer"
+            role="separator"
+            aria-label="Resize Animation Workshop and preview panels"
+            aria-orientation="vertical"
+            aria-valuemin={320}
+            aria-valuenow={animationToolsWidth ?? undefined}
+            tabIndex={0}
+            onPointerDown={startAnimationLayoutResize}
+            onPointerMove={resizeAnimationLayout}
+            onPointerUp={stopAnimationLayoutResize}
+            onPointerCancel={stopAnimationLayoutResize}
+            onLostPointerCapture={(event) => {
+              animationLayoutResizeRef.current = null;
+              event.currentTarget.classList.remove("is-active");
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+              const viewerWidth =
+                event.currentTarget.parentElement?.getBoundingClientRect().width ??
+                window.innerWidth;
+              const minToolsWidth = 320;
+              const maxToolsWidth = Math.max(320, viewerWidth - 326);
+              const currentWidth =
+                event.currentTarget.previousElementSibling instanceof HTMLElement
+                  ? event.currentTarget.previousElementSibling.getBoundingClientRect().width
+                  : animationToolsWidth ?? minToolsWidth;
+              const delta = event.key === "ArrowLeft" ? -24 : 24;
+              setAnimationToolsWidth(
+                Math.round(
+                  Math.min(
+                    maxToolsWidth,
+                    Math.max(minToolsWidth, currentWidth + delta),
+                  ),
+                ),
+              );
+              event.preventDefault();
+            }}
           />
         )}
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import AnimationDiagnosticsPanel from "./AnimationDiagnosticsPanel";
 import MotionStack, { type MotionStackConfig, type MotionOperationKind } from "./AnimationFixStack";
 import type { AnimationContactLoopAnalysis } from "../lib/animation-contact-loop-fix";
@@ -62,12 +62,62 @@ export default function AnimationWorkspacePanel({
   onLoopRootPolicyChange,
 }: AnimationWorkspacePanelProps) {
   const [mobilePane, setMobilePane] = useState<"modifiers" | "analysis">("modifiers");
+  const [modifierStackHeight, setModifierStackHeight] = useState<number | null>(null);
+  const panelResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const analysisAvailable = selectedOperation !== "decomposition";
+
+  const startPanelResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const stack = event.currentTarget.previousElementSibling;
+    if (!(stack instanceof HTMLElement)) return;
+
+    panelResizeRef.current = {
+      startY: event.clientY,
+      startHeight: stack.getBoundingClientRect().height,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.classList.add("is-active");
+    event.preventDefault();
+  };
+
+  const resizePanel = (event: React.PointerEvent<HTMLDivElement>) => {
+    const resize = panelResizeRef.current;
+    const panel = event.currentTarget.parentElement;
+    if (!resize || !panel) return;
+
+    const panelHeight = panel.getBoundingClientRect().height;
+    const minStackHeight = 160;
+    const minAnalysisHeight = 140;
+    const separatorHeight = 6;
+    const maxStackHeight = Math.max(
+      minStackHeight,
+      panelHeight - minAnalysisHeight - separatorHeight - 20,
+    );
+    const nextHeight = resize.startHeight + event.clientY - resize.startY;
+    setModifierStackHeight(
+      Math.round(Math.min(maxStackHeight, Math.max(minStackHeight, nextHeight))),
+    );
+  };
+
+  const stopPanelResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    panelResizeRef.current = null;
+    event.currentTarget.classList.remove("is-active");
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   return (
     <section
       className={`animation-workspace-panel is-mobile-${mobilePane}`}
       aria-label="Motion processing workspace"
+      style={
+        modifierStackHeight !== null
+          ? ({
+              "--animation-stack-height": `${modifierStackHeight}px`,
+            } as React.CSSProperties)
+          : undefined
+      }
     >
       <div className="animation-mobile-pane-switcher" role="group" aria-label="Animation workspace panel">
         <button
@@ -112,6 +162,45 @@ export default function AnimationWorkspacePanel({
           onLoopRootPolicyChange={onLoopRootPolicyChange}
         />
       </div>
+
+      <div
+        className="animation-workspace-inner-resizer"
+        role="separator"
+        aria-label="Resize modifier and analysis panels"
+        aria-orientation="horizontal"
+        aria-valuemin={160}
+        aria-valuenow={modifierStackHeight ?? undefined}
+        tabIndex={0}
+        onPointerDown={startPanelResize}
+        onPointerMove={resizePanel}
+        onPointerUp={stopPanelResize}
+        onPointerCancel={stopPanelResize}
+        onLostPointerCapture={(event) => {
+          panelResizeRef.current = null;
+          event.currentTarget.classList.remove("is-active");
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+          const panelHeight =
+            event.currentTarget.parentElement?.getBoundingClientRect().height ?? 600;
+          const minStackHeight = 160;
+          const maxStackHeight = Math.max(160, panelHeight - 166);
+          const currentHeight =
+            event.currentTarget.previousElementSibling instanceof HTMLElement
+              ? event.currentTarget.previousElementSibling.getBoundingClientRect().height
+              : modifierStackHeight ?? minStackHeight;
+          const delta = event.key === "ArrowUp" ? -24 : 24;
+          setModifierStackHeight(
+            Math.round(
+              Math.min(
+                maxStackHeight,
+                Math.max(minStackHeight, currentHeight + delta),
+              ),
+            ),
+          );
+          event.preventDefault();
+        }}
+      />
 
       <AnimationDiagnosticsPanel
         hasAnimation={hasAnimation}

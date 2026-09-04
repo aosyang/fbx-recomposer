@@ -23,7 +23,10 @@
 .workspace-switcher button.is-active { background: #303840; color: #fff; }
 
 .viewer.workspace-animation {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 34vw);
+  grid-template-columns:
+    minmax(320px, var(--animation-tools-width, 1.94fr))
+    6px
+    minmax(320px, 1fr);
 }
 
 .workspace-viewer .viewer-left {
@@ -55,7 +58,7 @@
 }
 
 .workspace-animation .viewer-left {
-  grid-column: 2;
+  grid-column: 3;
 }
 
 .workspace-animation .viewport-stage {
@@ -94,7 +97,10 @@
 }
 
 .viewer.workspace-animation.has-panel {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 34vw);
+  grid-template-columns:
+    minmax(320px, var(--animation-tools-width, 1.94fr))
+    6px
+    minmax(320px, 1fr);
 }
 
 .viewer.workspace-animation .panel-resizer,
@@ -119,16 +125,73 @@
     grid-column: 1;
     grid-row: 2;
   }
+
+  .animation-workspace-main-resizer,
+  .animation-workspace-inner-resizer {
+    display: none;
+  }
 }
 
 
 /* Compact desktop animation workspace */
 @media (min-width: 901px) {
+  .animation-workspace-main-resizer {
+    grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    z-index: 4;
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  .animation-workspace-main-resizer::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    width: 2px;
+    background: #2d353b;
+    transition: background 120ms ease;
+  }
+
+  .animation-workspace-main-resizer:hover::before,
+  .animation-workspace-main-resizer.is-active::before,
+  .animation-workspace-main-resizer:focus-visible::before {
+    background: #6e8798;
+  }
+
   .workspace-animation .animation-workspace-panel {
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows:
+      minmax(160px, var(--animation-stack-height, 1fr))
+      6px
+      minmax(140px, 1fr);
     align-content: stretch;
     gap: 10px;
     overflow: hidden;
+  }
+
+  .animation-workspace-inner-resizer {
+    position: relative;
+    cursor: row-resize;
+    touch-action: none;
+  }
+
+  .animation-workspace-inner-resizer::before {
+    content: "";
+    position: absolute;
+    right: 0;
+    left: 0;
+    top: 2px;
+    height: 2px;
+    background: #2d353b;
+    transition: background 120ms ease;
+  }
+
+  .animation-workspace-inner-resizer:hover::before,
+  .animation-workspace-inner-resizer.is-active::before,
+  .animation-workspace-inner-resizer:focus-visible::before {
+    background: #6e8798;
   }
 
   .animation-workspace-heading {
