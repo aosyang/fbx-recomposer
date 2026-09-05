@@ -212,7 +212,7 @@ export default function AnimationDiagnosticsPanel({
   appliedLoopAnalysis,
   contactAnalysis,
 }: Props) {
-  if (selectedOperation === "decomposition") return null;
+  if (selectedOperation === "decomposition" || selectedOperation === "poseWarp") return null;
 
   return (
     <section className="animation-workspace-diagnostics" aria-label="Animation analysis">

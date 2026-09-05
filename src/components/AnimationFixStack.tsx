@@ -5,7 +5,7 @@ import type { RootMotionExtractionMode, RootMotionYawMode } from "../lib/animati
 import type { MotionDecompositionBaseMode } from "../lib/animation-motion-decomposition";
 import "./AnimationFixStack.css";
 
-export type MotionOperationKind = "rootMotion" | "decomposition" | "loopFix";
+export type MotionOperationKind = "rootMotion" | "decomposition" | "poseWarp" | "loopFix";
 
 export type MotionStackConfig = {
   rootMotion: {
@@ -26,6 +26,14 @@ export type MotionStackConfig = {
     midGain: number;
     fineGain: number;
   };
+  poseWarp: {
+    enabled: boolean;
+    anchor: "start" | "end";
+    targetName: string;
+    targetTime: number;
+    warpStartTime: number;
+    warpEndTime: number;
+  };
   loopFix: {
     enabled: boolean;
     mode: AnimationLoopFixMode;
@@ -44,6 +52,12 @@ type MotionStackProps = {
   onDecompositionLowGainChange: (value: number) => void;
   onDecompositionMidGainChange: (value: number) => void;
   onDecompositionFineGainChange: (value: number) => void;
+  onPoseWarpEnabledChange: (enabled: boolean) => void;
+  onPoseWarpAnchorChange: (anchor: MotionStackConfig["poseWarp"]["anchor"]) => void;
+  onPoseWarpTargetFileChange: (file: File | null) => void;
+  onPoseWarpTargetTimeChange: (value: number) => void;
+  onPoseWarpStartTimeChange: (value: number) => void;
+  onPoseWarpEndTimeChange: (value: number) => void;
   onLoopFixEnabledChange: (enabled: boolean) => void;
   onRootMotionModeChange: (mode: RootMotionExtractionMode) => void;
   onRootMotionSmoothingWindowChange: (value: number) => void;
@@ -179,6 +193,12 @@ export default function MotionStack({
   onDecompositionLowGainChange,
   onDecompositionMidGainChange,
   onDecompositionFineGainChange,
+  onPoseWarpEnabledChange,
+  onPoseWarpAnchorChange,
+  onPoseWarpTargetFileChange,
+  onPoseWarpTargetTimeChange,
+  onPoseWarpStartTimeChange,
+  onPoseWarpEndTimeChange,
   onLoopFixEnabledChange,
   onRootMotionModeChange,
   onRootMotionSmoothingWindowChange,
@@ -191,6 +211,19 @@ export default function MotionStack({
   onLoopModeChange,
   onLoopRootPolicyChange,
 }: MotionStackProps) {
+  const poseWarpDuration = Math.max(
+    0,
+    config.poseWarp.warpEndTime - config.poseWarp.warpStartTime,
+  );
+  const setPoseWarpDuration = (duration: number) => {
+    const clamped = Math.max(0, duration);
+    if (config.poseWarp.anchor === "start") {
+      onPoseWarpEndTimeChange(config.poseWarp.warpStartTime + clamped);
+    } else {
+      onPoseWarpStartTimeChange(Math.max(0, config.poseWarp.warpEndTime - clamped));
+    }
+  };
+
   return (
     <div className="animation-fix-stack-shell">
       <div className="animation-fix-stack-title-row">
@@ -269,7 +302,123 @@ export default function MotionStack({
         </div>
         <div className="animation-fix-stack-item">
           <OperationCard
-            title="3. Loop Repair"
+            title="3. Pose Warp"
+            summary={config.poseWarp.targetName || "Choose target pose FBX"}
+            enabled={config.poseWarp.enabled}
+            selected={selected === "poseWarp"}
+            disabled={disabled}
+            onSelect={() => onSelectedChange("poseWarp")}
+            onEnabledChange={onPoseWarpEnabledChange}
+          />
+          {selected === "poseWarp" && (
+            <div className="animation-fix-inline-config pose-warp-inline-config">
+              <div className="pose-warp-primary">
+                <div className="pose-warp-field">
+                  <span className="pose-warp-field-label">Match</span>
+                  <div className="pose-warp-segmented" role="group" aria-label="Pose warp goal">
+                    <button
+                      type="button"
+                      className={config.poseWarp.anchor === "start" ? "is-active" : ""}
+                      disabled={disabled || !config.poseWarp.enabled}
+                      onClick={() => onPoseWarpAnchorChange("start")}
+                    >
+                      Start
+                    </button>
+                    <button
+                      type="button"
+                      className={config.poseWarp.anchor === "end" ? "is-active" : ""}
+                      disabled={disabled || !config.poseWarp.enabled}
+                      onClick={() => onPoseWarpAnchorChange("end")}
+                    >
+                      End
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pose-warp-field">
+                  <span className="pose-warp-field-label">Target Pose</span>
+                  <label className="pose-warp-file-picker">
+                    <input
+                      type="file"
+                      accept=".fbx"
+                      disabled={disabled}
+                      onChange={(event) => onPoseWarpTargetFileChange(event.target.files?.[0] ?? null)}
+                    />
+                    <span className="pose-warp-file-name">
+                      {config.poseWarp.targetName || "Choose Pose FBX…"}
+                    </span>
+                    <span className="pose-warp-file-action">
+                      {config.poseWarp.targetName ? "Change" : "Choose"}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="pose-warp-field">
+                  <span className="pose-warp-field-label">
+                    {config.poseWarp.anchor === "start" ? "Blend Back" : "Blend Into Target"}
+                  </span>
+                  <div className="pose-warp-duration">
+                    <NumericParameterInput
+                      min={0.001}
+                      step={0.033}
+                      value={poseWarpDuration}
+                      disabled={disabled || !config.poseWarp.enabled}
+                      onCommit={setPoseWarpDuration}
+                    />
+                    <span>s</span>
+                  </div>
+                </div>
+
+                <div className="pose-warp-flow" aria-label="Pose warp direction">
+                  <span>{config.poseWarp.anchor === "start" ? "Target Pose" : "Original Motion"}</span>
+                  <span className="pose-warp-flow-arrow">→</span>
+                  <span>{config.poseWarp.anchor === "start" ? "Original Motion" : "Target Pose"}</span>
+                </div>
+              </div>
+
+              <details className="pose-warp-advanced">
+                <summary>Advanced</summary>
+                <div className="pose-warp-advanced-body">
+                  <label>
+                    <span>Target time</span>
+                    <NumericParameterInput
+                      min={0}
+                      step={0.033}
+                      value={config.poseWarp.targetTime}
+                      disabled={disabled || !config.poseWarp.enabled}
+                      onCommit={onPoseWarpTargetTimeChange}
+                    />
+                  </label>
+                  <div className="pose-warp-region">
+                    <span>Warp region</span>
+                    <NumericParameterInput
+                      min={0}
+                      step={0.033}
+                      value={config.poseWarp.warpStartTime}
+                      disabled={disabled || !config.poseWarp.enabled}
+                      onCommit={onPoseWarpStartTimeChange}
+                    />
+                    <span className="pose-warp-region-arrow">→</span>
+                    <NumericParameterInput
+                      min={0}
+                      step={0.033}
+                      value={config.poseWarp.warpEndTime}
+                      disabled={disabled || !config.poseWarp.enabled}
+                      onCommit={onPoseWarpEndTimeChange}
+                    />
+                  </div>
+                  <div className="pose-warp-status">
+                    <span>Root Motion</span>
+                    <strong>Preserved</strong>
+                  </div>
+                </div>
+              </details>
+            </div>
+          )}
+        </div>
+        <div className="animation-fix-stack-item">
+          <OperationCard
+            title="4. Loop Repair"
             summary={`${config.loopFix.mode === "cyclic" ? "Cyclic" : "Inertial"} · ${config.loopFix.rootPolicy === "auto" ? "Auto root" : config.loopFix.rootPolicy === "close" ? "Close root" : "Preserve root"}`}
             enabled={config.loopFix.enabled}
             selected={selected === "loopFix"}

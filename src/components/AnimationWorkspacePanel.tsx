@@ -23,6 +23,12 @@ type AnimationWorkspacePanelProps = {
   onDecompositionLowGainChange: (value: number) => void;
   onDecompositionMidGainChange: (value: number) => void;
   onDecompositionFineGainChange: (value: number) => void;
+  onPoseWarpEnabledChange: (enabled: boolean) => void;
+  onPoseWarpAnchorChange: (anchor: MotionStackConfig["poseWarp"]["anchor"]) => void;
+  onPoseWarpTargetFileChange: (file: File | null) => void;
+  onPoseWarpTargetTimeChange: (value: number) => void;
+  onPoseWarpStartTimeChange: (value: number) => void;
+  onPoseWarpEndTimeChange: (value: number) => void;
   onLoopFixEnabledChange: (enabled: boolean) => void;
   onRootMotionModeChange: (mode: MotionStackConfig["rootMotion"]["mode"]) => void;
   onRootMotionSmoothingWindowChange: (value: number) => void;
@@ -53,6 +59,12 @@ export default function AnimationWorkspacePanel({
   onDecompositionLowGainChange,
   onDecompositionMidGainChange,
   onDecompositionFineGainChange,
+  onPoseWarpEnabledChange,
+  onPoseWarpAnchorChange,
+  onPoseWarpTargetFileChange,
+  onPoseWarpTargetTimeChange,
+  onPoseWarpStartTimeChange,
+  onPoseWarpEndTimeChange,
   onLoopFixEnabledChange,
   onRootMotionModeChange,
   onRootMotionSmoothingWindowChange,
@@ -68,7 +80,7 @@ export default function AnimationWorkspacePanel({
   const [mobilePane, setMobilePane] = useState<"modifiers" | "analysis">("modifiers");
   const [modifierStackHeight, setModifierStackHeight] = useState<number | null>(null);
   const panelResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
-  const analysisAvailable = selectedOperation !== "decomposition";
+  const analysisAvailable = selectedOperation === "rootMotion" || selectedOperation === "loopFix";
 
   const startPanelResize = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -155,6 +167,12 @@ export default function AnimationWorkspacePanel({
           onDecompositionLowGainChange={onDecompositionLowGainChange}
           onDecompositionMidGainChange={onDecompositionMidGainChange}
           onDecompositionFineGainChange={onDecompositionFineGainChange}
+          onPoseWarpEnabledChange={onPoseWarpEnabledChange}
+          onPoseWarpAnchorChange={onPoseWarpAnchorChange}
+          onPoseWarpTargetFileChange={onPoseWarpTargetFileChange}
+          onPoseWarpTargetTimeChange={onPoseWarpTargetTimeChange}
+          onPoseWarpStartTimeChange={onPoseWarpStartTimeChange}
+          onPoseWarpEndTimeChange={onPoseWarpEndTimeChange}
           onLoopFixEnabledChange={onLoopFixEnabledChange}
           onRootMotionModeChange={onRootMotionModeChange}
           onRootMotionSmoothingWindowChange={onRootMotionSmoothingWindowChange}

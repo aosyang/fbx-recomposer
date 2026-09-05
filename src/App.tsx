@@ -18,6 +18,7 @@ import {
   type MotionDecompositionReport,
 } from "./lib/animation-motion-decomposition";
 import { analyzeRootMotion, extractRootMotionFromHips, type RootMotionAnalysis, type RootMotionExtractionMode, type RootMotionExtractionReport, type RootMotionYawMode } from "./lib/animation-root-motion";
+import { warpAnimationToPose, type PoseWarpReport } from "./lib/animation-pose-warp";
 import {
   analyzeAnimationLoopContact,
   repairAnimationLoopContact,
@@ -685,6 +686,8 @@ export default function App() {
   const saveFbxRef = useRef<(selection: FbxExportSelection) => void>(() => undefined);
   const fixAnimationLoopRef = useRef<(mode: AnimationLoopFixMode, rootPolicy: AnimationLoopRootPolicy) => void>(() => undefined);
   const applyAnimationFixRef = useRef<(config: MotionStackConfig) => void>(() => undefined);
+  const animationPoseWarpTargetClipRef = useRef<THREE.AnimationClip | null>(null);
+  const loadPoseWarpTargetRef = useRef<(file: File) => void>(() => undefined);
   const seekAnimationRef = useRef<(time: number) => void>(() => undefined);
   const setAnimationPlayingRef = useRef<(playing: boolean) => void>(
     () => undefined,
@@ -742,6 +745,12 @@ export default function App() {
   const [animationDecompositionMidGain, setAnimationDecompositionMidGain] = useState(1);
   const [animationDecompositionFineGain, setAnimationDecompositionFineGain] = useState(1);
   const [animationDecompositionReport, setAnimationDecompositionReport] = useState<MotionDecompositionReport | null>(null);
+  const [animationPoseWarpEnabled, setAnimationPoseWarpEnabled] = useState(false);
+  const [animationPoseWarpAnchor, setAnimationPoseWarpAnchor] = useState<"start" | "end">("end");
+  const [animationPoseWarpTargetName, setAnimationPoseWarpTargetName] = useState("");
+  const [animationPoseWarpTargetTime, setAnimationPoseWarpTargetTime] = useState(0);
+  const [animationPoseWarpStartTime, setAnimationPoseWarpStartTime] = useState(0);
+  const [animationPoseWarpEndTime, setAnimationPoseWarpEndTime] = useState(1);
   const [selectedMotionOperation, setSelectedMotionOperation] = useState<MotionOperationKind>("rootMotion");
   const selectedMotionOperationRef = useRef<MotionOperationKind>("rootMotion");
   const [animationRootMotionAnalysis, setAnimationRootMotionAnalysis] = useState<RootMotionAnalysis | null>(null);
@@ -777,13 +786,21 @@ export default function App() {
         midGain: animationDecompositionMidGain,
         fineGain: animationDecompositionFineGain,
       },
+      poseWarp: {
+        enabled: animationPoseWarpEnabled,
+        anchor: animationPoseWarpAnchor,
+        targetName: animationPoseWarpTargetName,
+        targetTime: animationPoseWarpTargetTime,
+        warpStartTime: animationPoseWarpStartTime,
+        warpEndTime: animationPoseWarpEndTime,
+      },
       loopFix: {
         enabled: animationLoopFixEnabled,
         mode: animationLoopFixMode,
         rootPolicy: animationLoopRootPolicy,
       },
     });
-  }, [animationRootMotionEnabled, animationRootMotionMode, animationRootMotionSmoothingWindow, animationRootMotionVelocityTolerance, animationRootMotionExtractX, animationRootMotionExtractZ, animationRootMotionExtractYaw, animationRootMotionYawMode, animationRootMotionYawToleranceDegrees, animationDecompositionEnabled, animationDecompositionBaseMode, animationDecompositionLowGain, animationDecompositionMidGain, animationDecompositionFineGain, animationLoopFixEnabled, animationLoopFixMode, animationLoopRootPolicy]);
+  }, [animationRootMotionEnabled, animationRootMotionMode, animationRootMotionSmoothingWindow, animationRootMotionVelocityTolerance, animationRootMotionExtractX, animationRootMotionExtractZ, animationRootMotionExtractYaw, animationRootMotionYawMode, animationRootMotionYawToleranceDegrees, animationDecompositionEnabled, animationDecompositionBaseMode, animationDecompositionLowGain, animationDecompositionMidGain, animationDecompositionFineGain, animationPoseWarpEnabled, animationPoseWarpAnchor, animationPoseWarpTargetName, animationPoseWarpTargetTime, animationPoseWarpStartTime, animationPoseWarpEndTime, animationLoopFixEnabled, animationLoopFixMode, animationLoopRootPolicy]);
   const [animationModelAlternative, setAnimationModelAlternative] = useState<{
     file: File;
     resources: File[];
@@ -1182,6 +1199,67 @@ export default function App() {
       if (refocusViewport) frameObject();
     };
 
+    loadPoseWarpTargetRef.current = (file: File) => {
+      if (!model || !file.name.toLowerCase().endsWith(".fbx")) return;
+      const targetModel = model;
+
+      const reader = new FileReader();
+      reader.onerror = () => {
+        animationPoseWarpTargetClipRef.current = null;
+        setAnimationPoseWarpTargetName("");
+        setMessage("Could not read the Pose Warp target FBX.");
+      };
+      reader.onload = () => {
+        let sourceRoot: THREE.Group | null = null;
+        try {
+          const parsedRoot = new FBXLoader().parse(reader.result as ArrayBuffer, "");
+          sourceRoot = parsedRoot;
+          const sourceClip = parsedRoot.animations[0];
+          if (!sourceClip) {
+            animationPoseWarpTargetClipRef.current = null;
+            setAnimationPoseWarpTargetName("");
+            setMessage("Pose Warp target FBX does not contain an animation clip.");
+            return;
+          }
+
+          const { clip: targetClip, matchedBoneNames } = retargetClipToCanonicalBones(
+            parsedRoot,
+            targetModel,
+            sourceClip,
+          );
+          if (!targetClip.tracks.length) {
+            animationPoseWarpTargetClipRef.current = null;
+            setAnimationPoseWarpTargetName("");
+            setMessage("Pose Warp target has no animation tracks matching the current rig.");
+            return;
+          }
+
+          animationPoseWarpTargetClipRef.current = targetClip;
+          setAnimationPoseWarpTargetName(file.name);
+          setAnimationPoseWarpTargetTime(Math.max(0, targetClip.duration));
+          const defaultWarpEnd = animationDuration > 0 ? animationDuration : Math.max(0, targetClip.duration);
+          if (animationPoseWarpAnchor === "start") {
+            setAnimationPoseWarpStartTime(0);
+            setAnimationPoseWarpEndTime(Math.min(defaultWarpEnd, 0.5));
+          } else {
+            setAnimationPoseWarpEndTime(defaultWarpEnd);
+            setAnimationPoseWarpStartTime(Math.max(0, defaultWarpEnd - 0.5));
+          }
+          setMessage(
+            "Pose Warp target loaded: " + file.name + " (" + matchedBoneNames.length + " matched bones).",
+          );
+        } catch (error) {
+          animationPoseWarpTargetClipRef.current = null;
+          setAnimationPoseWarpTargetName("");
+          setMessage("Pose Warp target failed: " + getErrorDetail(error));
+          console.error("[FBX Recomposer] Pose Warp target parse failed", error);
+        } finally {
+          if (sourceRoot) disposeObject(sourceRoot);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+
     applyAnimationFixRef.current = (config: MotionStackConfig) => {
       if (!model || pristineAnimationClips.length === 0) return;
       const wasPlaying = animationActions.some((action) => !action.paused);
@@ -1246,6 +1324,47 @@ export default function App() {
         });
       }
       setAnimationDecompositionReport(config.decomposition.enabled ? mergeMotionDecompositionReports(decompositionReports) : null);
+
+      const poseWarpReports: PoseWarpReport[] = [];
+      if (config.poseWarp.enabled) {
+        const targetClip = animationPoseWarpTargetClipRef.current;
+        if (!targetClip) {
+          setMessage("Pose Warp failed: choose a target pose FBX first.");
+          return;
+        }
+        try {
+          const poseWarpModel = model;
+          const rootAnalysisForPoseWarp = analyzeAnimationLoop(poseWarpModel, workingClips);
+          const rootBoneUuidsForPoseWarp = new Set(rootAnalysisForPoseWarp.rootBoneUuids);
+          workingClips = workingClips.map((sourceClip) => {
+            const result = warpAnimationToPose(sourceClip, targetClip, {
+              anchor: config.poseWarp.anchor,
+              targetTime: config.poseWarp.targetTime,
+              warpStartTime: config.poseWarp.warpStartTime,
+              warpEndTime: config.poseWarp.warpEndTime,
+              shouldWarpTrack: (track) => {
+                try {
+                  const parsed = THREE.PropertyBinding.parseTrackName(track.name);
+                  const target =
+                    poseWarpModel.getObjectByProperty("uuid", parsed.nodeName) ??
+                    poseWarpModel.getObjectByName(parsed.nodeName);
+                  return !(target instanceof THREE.Bone && rootBoneUuidsForPoseWarp.has(target.uuid));
+                } catch {
+                  return false;
+                }
+              },
+            });
+            poseWarpReports.push(result.report);
+            return result.clip;
+          });
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          setMessage("Pose Warp failed: " + detail);
+          console.error("[FBX Recomposer] Pose Warp failed", error);
+          return;
+        }
+      }
+
       repairedClips = workingClips;
 
       let repairedPositionTracks = 0;
@@ -1361,6 +1480,12 @@ export default function App() {
       if (config.decomposition.enabled) {
         operations.push(`Motion Decompose ${config.decomposition.baseMode} base; detail ${config.decomposition.lowGain.toFixed(1)}/${config.decomposition.midGain.toFixed(1)}/${config.decomposition.fineGain.toFixed(1)}`);
       }
+      if (config.poseWarp.enabled && poseWarpReports.length > 0) {
+        const report = poseWarpReports[0];
+        operations.push(
+          `Pose Warp ${report.warpStartTime.toFixed(2)}-${report.warpEndTime.toFixed(2)}s → target ${report.targetTime.toFixed(2)}s`,
+        );
+      }
       if (config.loopFix.enabled) {
         operations.push(`Loop Fix ${config.loopFix.mode}; root ${effectiveRootMode}`);
       }
@@ -1368,6 +1493,7 @@ export default function App() {
       console.info("[FBX Recomposer] Animation fix graph applied from pristine source", {
         config,
         rootMotion: rootMotionReports,
+        poseWarp: poseWarpReports,
         loop: loopAnalysis,
         repairedPositionTracks,
         repairedQuaternionTracks,
@@ -1396,6 +1522,14 @@ export default function App() {
           lowGain: 1,
           midGain: 1,
           fineGain: 1,
+        },
+        poseWarp: {
+          enabled: false,
+          anchor: "end",
+          targetName: "",
+          targetTime: 0,
+          warpStartTime: 0,
+          warpEndTime: 1,
         },
         loopFix: { enabled: true, mode, rootPolicy },
       });
@@ -1738,6 +1872,10 @@ export default function App() {
     };
 
     loadModelRef.current = (file: File, options?: LoadModelOptions) => {
+      animationPoseWarpTargetClipRef.current = null;
+      setAnimationPoseWarpTargetName("");
+      setAnimationPoseWarpEnabled(false);
+      setAnimationPoseWarpTargetTime(0);
       const importEmbeddedAnimation = options?.importEmbeddedAnimation ?? true;
       const resources = options?.resources ?? [];
       const persistLocalAsset = options?.persistLocalAsset ?? true;
@@ -1995,6 +2133,8 @@ export default function App() {
       saveFbxRef.current = () => undefined;
       fixAnimationLoopRef.current = () => undefined;
       applyAnimationFixRef.current = () => undefined;
+      loadPoseWarpTargetRef.current = () => undefined;
+      animationPoseWarpTargetClipRef.current = null;
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -2632,6 +2772,14 @@ export default function App() {
                 midGain: animationDecompositionMidGain,
                 fineGain: animationDecompositionFineGain,
               },
+              poseWarp: {
+                enabled: animationPoseWarpEnabled,
+                anchor: animationPoseWarpAnchor,
+                targetName: animationPoseWarpTargetName,
+                targetTime: animationPoseWarpTargetTime,
+                warpStartTime: animationPoseWarpStartTime,
+                warpEndTime: animationPoseWarpEndTime,
+              },
               loopFix: {
                 enabled: animationLoopFixEnabled,
                 mode: animationLoopFixMode,
@@ -2651,6 +2799,24 @@ export default function App() {
             onDecompositionLowGainChange={setAnimationDecompositionLowGain}
             onDecompositionMidGainChange={setAnimationDecompositionMidGain}
             onDecompositionFineGainChange={setAnimationDecompositionFineGain}
+            onPoseWarpEnabledChange={setAnimationPoseWarpEnabled}
+            onPoseWarpAnchorChange={(anchor) => {
+              setAnimationPoseWarpAnchor(anchor);
+              if (anchor === "start") {
+                setAnimationPoseWarpStartTime(0);
+                setAnimationPoseWarpEndTime(Math.min(animationTimeline?.duration ?? 0.5, 0.5));
+              } else {
+                const end = animationTimeline?.duration ?? 1;
+                setAnimationPoseWarpEndTime(end);
+                setAnimationPoseWarpStartTime(Math.max(0, end - 0.5));
+              }
+            }}
+            onPoseWarpTargetFileChange={(file) => {
+              if (file) loadPoseWarpTargetRef.current(file);
+            }}
+            onPoseWarpTargetTimeChange={setAnimationPoseWarpTargetTime}
+            onPoseWarpStartTimeChange={setAnimationPoseWarpStartTime}
+            onPoseWarpEndTimeChange={setAnimationPoseWarpEndTime}
             onLoopFixEnabledChange={setAnimationLoopFixEnabled}
             onRootMotionModeChange={setAnimationRootMotionMode}
             onRootMotionSmoothingWindowChange={setAnimationRootMotionSmoothingWindow}
