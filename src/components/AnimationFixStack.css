@@ -138,6 +138,29 @@
   font-weight: 600;
   white-space: nowrap;
 }
+.root-motion-axis-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.root-motion-axis-row .root-motion-config-channel {
+  margin-right: 4px;
+}
+.root-motion-axis-toggle {
+  display: inline-flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 4px !important;
+  width: auto;
+}
+.root-motion-axis-toggle > span {
+  color: #8f99a3;
+  font-size: 11px;
+}
+.root-motion-position-settings {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .root-motion-yaw-toggle {
   grid-template-columns: auto 16px !important;
   justify-content: start;

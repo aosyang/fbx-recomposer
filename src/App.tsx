@@ -726,6 +726,8 @@ export default function App() {
   const [animationLoopRootPolicy, setAnimationLoopRootPolicy] =
     useState<AnimationLoopRootPolicy>("auto");
   const [animationRootMotionEnabled, setAnimationRootMotionEnabled] = useState(false);
+  const [animationRootMotionExtractX, setAnimationRootMotionExtractX] = useState(true);
+  const [animationRootMotionExtractZ, setAnimationRootMotionExtractZ] = useState(true);
   const [animationRootMotionMode, setAnimationRootMotionMode] =
     useState<RootMotionExtractionMode>("velocity-guided");
   const [animationRootMotionSmoothingWindow, setAnimationRootMotionSmoothingWindow] = useState(5);
@@ -756,8 +758,32 @@ export default function App() {
   }, [selectedMotionOperation]);
 
   useEffect(() => {
-    applyAnimationFixRef.current({ rootMotion: { enabled: animationRootMotionEnabled, mode: animationRootMotionMode, velocitySmoothingWindow: animationRootMotionSmoothingWindow, velocityTolerance: animationRootMotionVelocityTolerance, extractYaw: animationRootMotionExtractYaw, yawMode: animationRootMotionYawMode, yawToleranceDegrees: animationRootMotionYawToleranceDegrees }, decomposition: { enabled: animationDecompositionEnabled, baseMode: animationDecompositionBaseMode, lowGain: animationDecompositionLowGain, midGain: animationDecompositionMidGain, fineGain: animationDecompositionFineGain }, loopFix: { enabled: animationLoopFixEnabled, mode: animationLoopFixMode, rootPolicy: animationLoopRootPolicy } });
-  }, [animationRootMotionEnabled, animationRootMotionMode, animationRootMotionSmoothingWindow, animationRootMotionVelocityTolerance, animationRootMotionExtractYaw, animationRootMotionYawMode, animationRootMotionYawToleranceDegrees, animationDecompositionEnabled, animationDecompositionBaseMode, animationDecompositionLowGain, animationDecompositionMidGain, animationDecompositionFineGain, animationLoopFixEnabled, animationLoopFixMode, animationLoopRootPolicy]);
+    applyAnimationFixRef.current({
+      rootMotion: {
+        enabled: animationRootMotionEnabled,
+        mode: animationRootMotionMode,
+        velocitySmoothingWindow: animationRootMotionSmoothingWindow,
+        velocityTolerance: animationRootMotionVelocityTolerance,
+        extractX: animationRootMotionExtractX,
+        extractZ: animationRootMotionExtractZ,
+        extractYaw: animationRootMotionExtractYaw,
+        yawMode: animationRootMotionYawMode,
+        yawToleranceDegrees: animationRootMotionYawToleranceDegrees,
+      },
+      decomposition: {
+        enabled: animationDecompositionEnabled,
+        baseMode: animationDecompositionBaseMode,
+        lowGain: animationDecompositionLowGain,
+        midGain: animationDecompositionMidGain,
+        fineGain: animationDecompositionFineGain,
+      },
+      loopFix: {
+        enabled: animationLoopFixEnabled,
+        mode: animationLoopFixMode,
+        rootPolicy: animationLoopRootPolicy,
+      },
+    });
+  }, [animationRootMotionEnabled, animationRootMotionMode, animationRootMotionSmoothingWindow, animationRootMotionVelocityTolerance, animationRootMotionExtractX, animationRootMotionExtractZ, animationRootMotionExtractYaw, animationRootMotionYawMode, animationRootMotionYawToleranceDegrees, animationDecompositionEnabled, animationDecompositionBaseMode, animationDecompositionLowGain, animationDecompositionMidGain, animationDecompositionFineGain, animationLoopFixEnabled, animationLoopFixMode, animationLoopRootPolicy]);
   const [animationModelAlternative, setAnimationModelAlternative] = useState<{
     file: File;
     resources: File[];
@@ -1171,6 +1197,8 @@ export default function App() {
               fps: 30,
               velocitySmoothingWindow: config.rootMotion.velocitySmoothingWindow,
               velocityTolerance: config.rootMotion.velocityTolerance,
+              extractX: config.rootMotion.extractX,
+              extractZ: config.rootMotion.extractZ,
               extractYaw: config.rootMotion.extractYaw,
               yawMode: config.rootMotion.yawMode,
               yawToleranceDegrees: config.rootMotion.yawToleranceDegrees,
@@ -1356,6 +1384,8 @@ export default function App() {
           mode: "velocity-guided",
           velocitySmoothingWindow: 5,
           velocityTolerance: 0.2,
+          extractX: true,
+          extractZ: true,
           extractYaw: false,
           yawMode: "rdp",
           yawToleranceDegrees: 1,
@@ -2589,6 +2619,8 @@ export default function App() {
                 mode: animationRootMotionMode,
                 velocitySmoothingWindow: animationRootMotionSmoothingWindow,
                 velocityTolerance: animationRootMotionVelocityTolerance,
+                extractX: animationRootMotionExtractX,
+                extractZ: animationRootMotionExtractZ,
                 extractYaw: animationRootMotionExtractYaw,
                 yawMode: animationRootMotionYawMode,
                 yawToleranceDegrees: animationRootMotionYawToleranceDegrees,
@@ -2623,6 +2655,8 @@ export default function App() {
             onRootMotionModeChange={setAnimationRootMotionMode}
             onRootMotionSmoothingWindowChange={setAnimationRootMotionSmoothingWindow}
             onRootMotionVelocityToleranceChange={setAnimationRootMotionVelocityTolerance}
+            onRootMotionExtractXChange={setAnimationRootMotionExtractX}
+            onRootMotionExtractZChange={setAnimationRootMotionExtractZ}
             onRootMotionExtractYawChange={setAnimationRootMotionExtractYaw}
             onRootMotionYawModeChange={setAnimationRootMotionYawMode}
             onRootMotionYawToleranceChange={setAnimationRootMotionYawToleranceDegrees}

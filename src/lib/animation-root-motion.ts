@@ -8,6 +8,8 @@ export type RootMotionExtractionOptions = {
   fps?: number;
   velocitySmoothingWindow?: number;
   velocityTolerance?: number;
+  extractX?: boolean;
+  extractZ?: boolean;
   extractYaw?: boolean;
   yawMode?: RootMotionYawMode;
   yawToleranceDegrees?: number;
@@ -373,17 +375,43 @@ export function extractRootMotionFromHips(
   const planarLocal = hipsSamples.map((sample) =>
     new THREE.Vector3(sample.x - hipsStart.x, 0, sample.z - hipsStart.z),
   );
-  const finalLocal = planarLocal[planarLocal.length - 1];
-  const planarDistance = Math.hypot(finalLocal.x, finalLocal.z);
-  if (planarDistance < 1e-5) {
+
+  const rootBase = rootTrackInfo
+    ? evaluateVectorTrack(rootTrackInfo.track, 0)
+    : root.position.clone();
+  const rootRotation = rootQuaternionTrackInfo
+    ? evaluateQuaternionTrack(rootQuaternionTrackInfo.track, 0)
+    : root.quaternion.clone();
+  const inverseRootRotation = rootRotation.clone().invert();
+
+  const extractX = options.extractX !== false;
+  const extractZ = options.extractZ !== false;
+  const extractPosition = extractX || extractZ;
+  const selectedParentPlanar = planarLocal.map((sample) => {
+    const parentSpace = sample.clone().applyQuaternion(rootRotation);
+    parentSpace.y = 0;
+    if (!extractX) parentSpace.x = 0;
+    if (!extractZ) parentSpace.z = 0;
+    return parentSpace;
+  });
+  const selectedLocal = selectedParentPlanar.map((sample) => {
+    const local = sample.clone().applyQuaternion(inverseRootRotation);
+    local.y = 0;
+    return local;
+  });
+  const finalSelectedParent = selectedParentPlanar[selectedParentPlanar.length - 1];
+  const planarDistance = Math.hypot(finalSelectedParent.x, finalSelectedParent.z);
+  if (extractPosition && extractX && extractZ && planarDistance < 1e-5) {
     throw new Error("Hips has almost no net planar displacement to extract.");
   }
 
   const smoothingWindow = normalizeWindow(options.velocitySmoothingWindow);
   const tolerance = options.velocityTolerance ?? 0.2;
-  const keyIndices = options.mode === "linear"
-    ? [0, times.length - 1]
-    : selectVelocityGuidedKeys(times, planarLocal, smoothingWindow, tolerance);
+  const keyIndices = extractPosition
+    ? (options.mode === "linear"
+      ? [0, times.length - 1]
+      : selectVelocityGuidedKeys(times, selectedParentPlanar, smoothingWindow, tolerance))
+    : [0];
 
   const extractYaw = options.extractYaw === true;
   if (extractYaw && !hipsQuaternionTrackInfo) {
@@ -403,24 +431,22 @@ export function extractRootMotionFromHips(
     ? rawYaw.map((_, index) => interpolateScalarAnchors(index, yawKeyIndices, rawYaw))
     : rawYaw;
 
-  const rootBase = rootTrackInfo
-    ? evaluateVectorTrack(rootTrackInfo.track, 0)
-    : root.position.clone();
-  const rootRotation = rootQuaternionTrackInfo
-    ? evaluateQuaternionTrack(rootQuaternionTrackInfo.track, 0)
-    : root.quaternion.clone();
-  const rootValues: number[] = [];
-  keyIndices.forEach((index) => {
-    const parentSpaceOffset = planarLocal[index].clone().applyQuaternion(rootRotation);
-    rootValues.push(
-      rootBase.x + parentSpaceOffset.x,
-      rootBase.y,
-      rootBase.z + parentSpaceOffset.z,
-    );
-  });
-  const rootTimes = keyIndices.map((index) => times[index]);
-  const rootTrackName = rootTrackInfo?.track.name ?? `${root.uuid}.position`;
-  const rootTrack = new THREE.VectorKeyframeTrack(rootTrackName, rootTimes, rootValues);
+  const rootTimes = extractPosition ? keyIndices.map((index) => times[index]) : [];
+  let rootTrack: THREE.VectorKeyframeTrack | null = null;
+  if (extractPosition) {
+    const rootValues: number[] = [];
+    keyIndices.forEach((index) => {
+      const parentSpaceOffset = selectedParentPlanar[index];
+      rootValues.push(
+        rootBase.x + parentSpaceOffset.x,
+        rootBase.y,
+        rootBase.z + parentSpaceOffset.z,
+      );
+    });
+    const rootTrackName = rootTrackInfo?.track.name ?? `${root.uuid}.position`;
+    rootTrack = new THREE.VectorKeyframeTrack(rootTrackName, rootTimes, rootValues);
+  }
+
   let rootQuaternionTrack: THREE.QuaternionKeyframeTrack | null = null;
   if (extractYaw) {
     const rootQuaternionValues: number[] = [];
@@ -436,22 +462,27 @@ export function extractRootMotionFromHips(
     );
   }
 
-  const compensatedHipsValues: number[] = [];
-  hipsSamples.forEach((sample, index) => {
-    const extractedLocal = interpolateAnchors(index, keyIndices, planarLocal);
-    const residual = new THREE.Vector3(
-      sample.x - extractedLocal.x,
-      sample.y,
-      sample.z - extractedLocal.z,
+  let compensatedHipsTrack: THREE.VectorKeyframeTrack | null = null;
+  if (extractPosition || extractYaw) {
+    const compensatedHipsValues: number[] = [];
+    hipsSamples.forEach((sample, index) => {
+      const extractedLocal = extractPosition
+        ? interpolateAnchors(index, keyIndices, selectedLocal)
+        : new THREE.Vector3();
+      const residual = new THREE.Vector3(
+        sample.x - extractedLocal.x,
+        sample.y,
+        sample.z - extractedLocal.z,
+      );
+      if (extractYaw) residual.applyAxisAngle(new THREE.Vector3(0, 1, 0), -extractedYaw[index]);
+      compensatedHipsValues.push(residual.x, residual.y, residual.z);
+    });
+    compensatedHipsTrack = new THREE.VectorKeyframeTrack(
+      hipsInfo.track.name,
+      times,
+      compensatedHipsValues,
     );
-    if (extractYaw) residual.applyAxisAngle(new THREE.Vector3(0, 1, 0), -extractedYaw[index]);
-    compensatedHipsValues.push(residual.x, residual.y, residual.z);
-  });
-  const compensatedHipsTrack = new THREE.VectorKeyframeTrack(
-    hipsInfo.track.name,
-    times,
-    compensatedHipsValues,
-  );
+  }
 
   let compensatedHipsQuaternionTrack: THREE.QuaternionKeyframeTrack | null = null;
   if (extractYaw && hipsQuaternionTrackInfo) {
@@ -466,12 +497,13 @@ export function extractRootMotionFromHips(
 
   const tracks = clip.tracks
     .filter((track) =>
-      track !== hipsInfo.track &&
-      track !== rootTrackInfo?.track &&
+      (!(extractPosition || extractYaw) || track !== hipsInfo.track) &&
+      (!extractPosition || track !== rootTrackInfo?.track) &&
       (!extractYaw || (track !== rootQuaternionTrackInfo?.track && track !== hipsQuaternionTrackInfo?.track))
     )
     .map((track) => track.clone());
-  tracks.push(compensatedHipsTrack, rootTrack);
+  if (compensatedHipsTrack) tracks.push(compensatedHipsTrack);
+  if (rootTrack) tracks.push(rootTrack);
   if (compensatedHipsQuaternionTrack) tracks.push(compensatedHipsQuaternionTrack);
   if (rootQuaternionTrack) tracks.push(rootQuaternionTrack);
   const resultClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
@@ -481,9 +513,9 @@ export function extractRootMotionFromHips(
     hipsName: hips.name || "<unnamed hips>",
     mode: options.mode,
     sampleCount: times.length,
-    rootKeyCount: keyIndices.length,
+    rootKeyCount: extractPosition ? keyIndices.length : 0,
     rootKeyTimes: rootTimes,
-    planarDisplacement: [finalLocal.x, finalLocal.z],
+    planarDisplacement: [finalSelectedParent.x, finalSelectedParent.z],
     planarDistance,
     extractedYawDegrees: THREE.MathUtils.radToDeg(extractedYaw[extractedYaw.length - 1] ?? 0),
     yawKeyCount: extractYaw ? yawKeyIndices.length : 0,

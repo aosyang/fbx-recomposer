@@ -27,6 +27,8 @@ type AnimationWorkspacePanelProps = {
   onRootMotionModeChange: (mode: MotionStackConfig["rootMotion"]["mode"]) => void;
   onRootMotionSmoothingWindowChange: (value: number) => void;
   onRootMotionVelocityToleranceChange: (value: number) => void;
+  onRootMotionExtractXChange: (enabled: boolean) => void;
+  onRootMotionExtractZChange: (enabled: boolean) => void;
   onRootMotionExtractYawChange: (enabled: boolean) => void;
   onRootMotionYawModeChange: (mode: MotionStackConfig["rootMotion"]["yawMode"]) => void;
   onRootMotionYawToleranceChange: (value: number) => void;
@@ -55,6 +57,8 @@ export default function AnimationWorkspacePanel({
   onRootMotionModeChange,
   onRootMotionSmoothingWindowChange,
   onRootMotionVelocityToleranceChange,
+  onRootMotionExtractXChange,
+  onRootMotionExtractZChange,
   onRootMotionExtractYawChange,
   onRootMotionYawModeChange,
   onRootMotionYawToleranceChange,
@@ -155,6 +159,8 @@ export default function AnimationWorkspacePanel({
           onRootMotionModeChange={onRootMotionModeChange}
           onRootMotionSmoothingWindowChange={onRootMotionSmoothingWindowChange}
           onRootMotionVelocityToleranceChange={onRootMotionVelocityToleranceChange}
+          onRootMotionExtractXChange={onRootMotionExtractXChange}
+          onRootMotionExtractZChange={onRootMotionExtractZChange}
           onRootMotionExtractYawChange={onRootMotionExtractYawChange}
           onRootMotionYawModeChange={onRootMotionYawModeChange}
           onRootMotionYawToleranceChange={onRootMotionYawToleranceChange}

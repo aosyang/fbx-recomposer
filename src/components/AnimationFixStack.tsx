@@ -13,6 +13,8 @@ export type MotionStackConfig = {
     mode: RootMotionExtractionMode;
     velocitySmoothingWindow: number;
     velocityTolerance: number;
+    extractX: boolean;
+    extractZ: boolean;
     extractYaw: boolean;
     yawMode: RootMotionYawMode;
     yawToleranceDegrees: number;
@@ -46,6 +48,8 @@ type MotionStackProps = {
   onRootMotionModeChange: (mode: RootMotionExtractionMode) => void;
   onRootMotionSmoothingWindowChange: (value: number) => void;
   onRootMotionVelocityToleranceChange: (value: number) => void;
+  onRootMotionExtractXChange: (enabled: boolean) => void;
+  onRootMotionExtractZChange: (enabled: boolean) => void;
   onRootMotionExtractYawChange: (enabled: boolean) => void;
   onRootMotionYawModeChange: (mode: RootMotionYawMode) => void;
   onRootMotionYawToleranceChange: (value: number) => void;
@@ -179,6 +183,8 @@ export default function MotionStack({
   onRootMotionModeChange,
   onRootMotionSmoothingWindowChange,
   onRootMotionVelocityToleranceChange,
+  onRootMotionExtractXChange,
+  onRootMotionExtractZChange,
   onRootMotionExtractYawChange,
   onRootMotionYawModeChange,
   onRootMotionYawToleranceChange,
@@ -206,8 +212,12 @@ export default function MotionStack({
           />
           {selected === "rootMotion" && (
             <div className="animation-fix-inline-config root-motion-inline-config">
-              <div className="root-motion-config-row">
+              <div className="root-motion-axis-row">
                 <span className="root-motion-config-channel">Position</span>
+                <label className="root-motion-axis-toggle"><span>X</span><input type="checkbox" checked={config.rootMotion.extractX} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionExtractXChange(event.target.checked)} /></label>
+                <label className="root-motion-axis-toggle"><span>Z</span><input type="checkbox" checked={config.rootMotion.extractZ} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionExtractZChange(event.target.checked)} /></label>
+              </div>
+              <div className="root-motion-config-row root-motion-position-settings">
                 <label><span>Method</span><select value={config.rootMotion.mode} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionModeChange(event.target.value as RootMotionExtractionMode)}><option value="velocity-guided">Velocity Guided</option><option value="linear">Linear</option></select></label>
                 {config.rootMotion.mode === "velocity-guided" && <>
                   <label><span>Smoothing</span><NumericParameterInput min={1} step={2} value={config.rootMotion.velocitySmoothingWindow} disabled={disabled || !config.rootMotion.enabled} onCommit={onRootMotionSmoothingWindowChange} /></label>
