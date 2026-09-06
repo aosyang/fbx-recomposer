@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { MotionStackConfig, MotionOperationKind } from "./components/AnimationFixStack";
 import AnimationWorkspacePanel from "./components/AnimationWorkspacePanel";
+import FileMenu from "./components/FileMenu";
+import ViewportDisplayMenu, {
+  type MaterialRenderMode,
+} from "./components/ViewportDisplayMenu";
 import WorkspaceSwitcher, { type AppWorkspace } from "./components/WorkspaceSwitcher";
 import { FBXLoader } from "./loaders/FastFBXLoader.js";
 import { retargetClipToCanonicalBones } from "./lib/animation-retarget";
@@ -108,8 +112,6 @@ type AssetFolderChoice = {
   candidates: File[];
   selectedFiles: File[];
 };
-
-type MaterialRenderMode = "material" | "solid";
 
 const MAX_RENDERED_MORPH_TARGETS = 256;
 const FBX_RESOURCE_EXTENSIONS = new Set([
@@ -2683,6 +2685,27 @@ export default function App() {
       ((dropChoice.replaceModel && dropChoice.hasModel) ||
         (dropChoice.importAnimation && dropCanImportAnimation)),
   );
+  const viewportDisplayMenuProps = {
+    open: displayMenuOpen,
+    hasBones,
+    hasSelectedBone: Boolean(selectedBoneId),
+    showBones,
+    showBoneName,
+    materialRenderMode,
+    onOpenChange: setDisplayMenuOpen,
+    onShowBonesChange: (show: boolean) => {
+      setShowBones(show);
+      setBonesVisibilityRef.current(show);
+    },
+    onShowBoneNameChange: (show: boolean) => {
+      setShowBoneName(show);
+      setBoneNameVisibilityRef.current(show);
+    },
+    onMaterialRenderModeChange: (mode: MaterialRenderMode) => {
+      setMaterialRenderMode(mode);
+      setMaterialRenderModeRef.current(mode);
+    },
+  };
 
   return (
     <main className="app-shell">
@@ -2694,163 +2717,25 @@ export default function App() {
           </a>
           <WorkspaceSwitcher value={workspace} onChange={setWorkspace} />
           <div className="file-actions">
-            <details className="open-model-menu">
-              <summary className="primary-button open-model-trigger">
-                Open
-                <span className="display-menu-chevron" aria-hidden="true" />
-              </summary>
-              <div className="open-model-menu-panel">
-                <button
-                  type="button"
-                  className="open-model-menu-item"
-                  onClick={(event) => {
-                    assetFolderInputRef.current?.click();
-                    const details = event.currentTarget.closest("details");
-                    if (details instanceof HTMLDetailsElement) details.open = false;
-                  }}
-                >
-                  <span className="open-model-menu-title">
-                    Asset Folder
-                    <span className="open-model-menu-badge">Recommended</span>
-                  </span>
-                  <span className="open-model-menu-description">
-                    FBX + textures, matched automatically
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="open-model-menu-item"
-                  onClick={(event) => {
-                    inputRef.current?.click();
-                    const details = event.currentTarget.closest("details");
-                    if (details instanceof HTMLDetailsElement) details.open = false;
-                  }}
-                >
-                  <span className="open-model-menu-title">FBX File</span>
-                  <span className="open-model-menu-description">Single FBX file</span>
-                </button>
-              </div>
-            </details>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={!exportAvailability.character && !exportAvailability.animation}
-                title={
-                  exportAvailability.character || exportAvailability.animation
-                    ? "Choose which FBX contents to export"
-                    : "Load an exportable character or animation first"
-                }
-                onClick={() =>
-                  setSaveDialog({
-                    character: exportAvailability.character,
-                    animation: exportAvailability.animation,
-                  })
-                }
-              >
-                Save FBX
-              </button>
+            <FileMenu
+              canSave={exportAvailability.character || exportAvailability.animation}
+              onOpenAssetFolder={() => assetFolderInputRef.current?.click()}
+              onOpenFbxFile={() => inputRef.current?.click()}
+              onSaveFbx={() =>
+                setSaveDialog({
+                  character: exportAvailability.character,
+                  animation: exportAvailability.animation,
+                })
+              }
+            />
           </div>
         </div>
-        <div className="viewport-display" aria-label="Viewport display controls">
-          {loadState === "ready" && (
-            <div
-              className="display-menu"
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <button
-                className={`display-menu-trigger ${
-                  displayMenuOpen ? "is-open" : ""
-                }`}
-                type="button"
-                aria-expanded={displayMenuOpen}
-                aria-haspopup="menu"
-                onClick={() => setDisplayMenuOpen((current) => !current)}
-              >
-                Display
-                <span className="display-menu-chevron" aria-hidden="true" />
-              </button>
-              {displayMenuOpen && (
-                <div className="display-menu-popover" role="menu">
-                  <button
-                    className={`display-menu-item ${
-                      showBones ? "is-active" : ""
-                    }`}
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={showBones}
-                    disabled={!hasBones}
-                    title={
-                      hasBones
-                        ? "Toggle skeleton overlay"
-                        : "This model has no bones"
-                    }
-                    onClick={() => {
-                      const nextValue = !showBones;
-                      setShowBones(nextValue);
-                      setBonesVisibilityRef.current(nextValue);
-                    }}
-                  >
-                    <span className="display-check" aria-hidden="true" />
-                    Bones
-                  </button>
-                  <button
-                    className={`display-menu-item ${
-                      showBoneName ? "is-active" : ""
-                    }`}
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={showBoneName}
-                    title={
-                      selectedBoneId
-                        ? "Show the selected bone name in the viewport"
-                        : "Show selected bone names when a bone is selected"
-                    }
-                    onClick={() => {
-                      const nextValue = !showBoneName;
-                      setShowBoneName(nextValue);
-                      setBoneNameVisibilityRef.current(nextValue);
-                    }}
-                  >
-                    <span className="display-check" aria-hidden="true" />
-                    Bone Names
-                  </button>
-                  <div className="display-menu-separator" role="separator" />
-                  <div className="display-menu-label">Material</div>
-                  <button
-                    className={`display-menu-item ${
-                      materialRenderMode === "material" ? "is-active" : ""
-                    }`}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={materialRenderMode === "material"}
-                    onClick={() => {
-                      setMaterialRenderMode("material");
-                      setMaterialRenderModeRef.current("material");
-                    }}
-                  >
-                    <span className="display-radio" aria-hidden="true" />
-                    Original Materials
-                  </button>
-                  <button
-                    className={`display-menu-item ${
-                      materialRenderMode === "solid" ? "is-active" : ""
-                    }`}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={materialRenderMode === "solid"}
-                    onClick={() => {
-                      setMaterialRenderMode("solid");
-                      setMaterialRenderModeRef.current("solid");
-                    }}
-                  >
-                    <span className="display-radio" aria-hidden="true" />
-                    Solid Color
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {loadState === "ready" && (
+          <ViewportDisplayMenu
+            className="viewport-display-desktop"
+            {...viewportDisplayMenuProps}
+          />
+        )}
       </header>
 
       <section
@@ -3162,6 +3047,12 @@ export default function App() {
               )}
               <div className="help">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
               <div className="viewport-tools">
+                {workspace === "viewer" && (
+                  <ViewportDisplayMenu
+                    className="viewport-display-mobile"
+                    {...viewportDisplayMenuProps}
+                  />
+                )}
                 <button
                   className="frame-view"
                   type="button"

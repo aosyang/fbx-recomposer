@@ -320,6 +320,18 @@
 
 }
 
+@media (max-width: 340px) {
+  .modifier-option-row {
+    grid-template-columns: var(--modifier-label-width) minmax(0, 1fr) max-content;
+    column-gap: 8px;
+  }
+
+  .modifier-option-label {
+    line-height: 1.25;
+    white-space: normal;
+  }
+}
+
 
 .foot-stabilizer-inline-config {
   display: grid;

@@ -110,6 +110,10 @@ button {
   align-items: center;
 }
 
+.viewport-display-mobile {
+  display: none;
+}
+
 .text-button,
 .display-menu-trigger,
 .display-menu-item,
@@ -1744,22 +1748,27 @@ button {
   outline: none;
 }
 
+.open-model-menu-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.open-model-menu-item:disabled:hover {
+  background: transparent;
+}
+
+.open-model-menu-separator {
+  height: 1px;
+  margin: 0.3rem 0.45rem;
+  background: #343b42;
+}
+
 .open-model-menu-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   font-weight: 700;
-}
-
-.open-model-menu-badge {
-  padding: 0.18rem 0.4rem;
-  border-radius: 999px;
-  background: rgb(110 238 154 / 14%);
-  color: #6eee9a;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
 }
 
 .open-model-menu-description {

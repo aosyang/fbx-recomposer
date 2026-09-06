@@ -340,9 +340,21 @@
     min-height: 44px;
   }
 
-  /* Display remains available on larger screens; hide it on phones to keep the primary bar usable. */
-  .viewport-display {
+  .viewport-display-desktop {
     display: none;
+  }
+
+  .viewport-display-mobile {
+    display: flex;
+  }
+
+  .viewport-display-mobile .display-menu-trigger {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #343940;
+    background: rgba(23, 26, 29, 0.86);
+    backdrop-filter: blur(10px);
   }
 
   .viewer.workspace-viewer {
@@ -443,7 +455,7 @@
     padding: 8px 10px;
   }
 
-  .viewport-display {
+  .viewport-display-desktop {
     display: none;
   }
 
