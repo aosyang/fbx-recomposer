@@ -157,11 +157,45 @@ function normalizeBoneName(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function boneNameTokens(name: string) {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^a-z0-9]+/i)
+    .map((token) => token.toLowerCase())
+    .filter(Boolean);
+}
+
+function sideToken(token: string): "left" | "right" | null {
+  if (token === "l" || token === "left") return "left";
+  if (token === "r" || token === "right") return "right";
+  return null;
+}
+
 function sideHint(name: string): "left" | "right" | null {
   const value = normalizeBoneName(name);
   if (value.includes("left") || value.startsWith("lfoot") || value.endsWith("footl")) return "left";
   if (value.includes("right") || value.startsWith("rfoot") || value.endsWith("footr")) return "right";
+  for (const token of boneNameTokens(name)) {
+    const side = sideToken(token);
+    if (side) return side;
+  }
   return null;
+}
+
+function isMirroredBoneNamePair(a: string, b: string) {
+  const aTokens = boneNameTokens(a);
+  const bTokens = boneNameTokens(b);
+  if (aTokens.length !== bTokens.length) return false;
+  let difference = -1;
+  for (let index = 0; index < aTokens.length; index += 1) {
+    if (aTokens[index] === bTokens[index]) continue;
+    if (difference >= 0) return false;
+    difference = index;
+  }
+  if (difference < 0) return false;
+  const aSide = sideToken(aTokens[difference]);
+  const bSide = sideToken(bTokens[difference]);
+  return Boolean(aSide && bSide && aSide !== bSide);
 }
 
 function isFootName(name: string) {
@@ -202,6 +236,19 @@ function discoverFootChains(model: THREE.Object3D) {
     .filter((entry) => entry.chain !== null);
 
   const byNamedSide = new Map<"left" | "right", FootChain>();
+  for (let index = 0; index < named.length; index += 1) {
+    const first = named[index];
+    if (!first.side || !first.chain) continue;
+    for (let nextIndex = index + 1; nextIndex < named.length; nextIndex += 1) {
+      const second = named[nextIndex];
+      if (!second.side || !second.chain || first.side === second.side) continue;
+      if (!isMirroredBoneNamePair(first.bone.name, second.bone.name)) continue;
+      byNamedSide.set(first.side, { ...first.chain, side: first.side });
+      byNamedSide.set(second.side, { ...second.chain, side: second.side });
+      break;
+    }
+    if (byNamedSide.size === 2) break;
+  }
   named.forEach((entry) => {
     if (entry.side && entry.chain && !byNamedSide.has(entry.side)) {
       byNamedSide.set(entry.side, { ...entry.chain, side: entry.side });
