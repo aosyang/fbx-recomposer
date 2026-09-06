@@ -5,6 +5,7 @@ import type { AnimationContactLoopAnalysis } from "../lib/animation-contact-loop
 import type { RootMotionAnalysis } from "../lib/animation-root-motion";
 import type { AnimationLoopAnalysis } from "../lib/animation-loop-analysis";
 import type { MotionDecompositionReport } from "../lib/animation-motion-decomposition";
+import type { FootStabilizerReport } from "../lib/animation-foot-stabilizer";
 
 type AnimationWorkspacePanelProps = {
   hasAnimation: boolean;
@@ -15,7 +16,9 @@ type AnimationWorkspacePanelProps = {
   loopAnalysis: AnimationLoopAnalysis | null;
   appliedLoopAnalysis: AnimationLoopAnalysis | null;
   contactAnalysis: AnimationContactLoopAnalysis | null;
+  footStabilizerAnalysis: FootStabilizerReport | null;
   decompositionReport: MotionDecompositionReport | null;
+  playbackTime: number;
   onSelectedOperationChange: (kind: MotionOperationKind) => void;
   onRootMotionEnabledChange: (enabled: boolean) => void;
   onDecompositionEnabledChange: (enabled: boolean) => void;
@@ -25,11 +28,19 @@ type AnimationWorkspacePanelProps = {
   onDecompositionFineGainChange: (value: number) => void;
   onPoseWarpEnabledChange: (enabled: boolean) => void;
   onPoseWarpAnchorChange: (anchor: MotionStackConfig["poseWarp"]["anchor"]) => void;
+  onPoseWarpMethodChange: (method: MotionStackConfig["poseWarp"]["method"]) => void;
   onPoseWarpTargetFileChange: (file: File | null) => void;
   onPoseWarpTargetTimeChange: (value: number) => void;
   onPoseWarpStartTimeChange: (value: number) => void;
   onPoseWarpEndTimeChange: (value: number) => void;
   onLoopFixEnabledChange: (enabled: boolean) => void;
+  onFootStabilizerEnabledChange: (enabled: boolean) => void;
+  onFootStabilizerWarpAirborneMotionChange: (enabled: boolean) => void;
+  onFootStabilizerMovementThresholdChange: (value: number) => void;
+  onFootStabilizerHeightThresholdChange: (value: number) => void;
+  onFootStabilizerInitialAnchorPositionChange: (value: number) => void;
+  onFootStabilizerIntermediateAnchorPositionChange: (value: number) => void;
+  onFootStabilizerFinalAnchorPositionChange: (value: number) => void;
   onRootMotionModeChange: (mode: MotionStackConfig["rootMotion"]["mode"]) => void;
   onRootMotionSmoothingWindowChange: (value: number) => void;
   onRootMotionVelocityToleranceChange: (value: number) => void;
@@ -51,7 +62,9 @@ export default function AnimationWorkspacePanel({
   loopAnalysis,
   appliedLoopAnalysis,
   contactAnalysis,
+  footStabilizerAnalysis,
   decompositionReport,
+  playbackTime,
   onSelectedOperationChange,
   onRootMotionEnabledChange,
   onDecompositionEnabledChange,
@@ -61,11 +74,19 @@ export default function AnimationWorkspacePanel({
   onDecompositionFineGainChange,
   onPoseWarpEnabledChange,
   onPoseWarpAnchorChange,
+  onPoseWarpMethodChange,
   onPoseWarpTargetFileChange,
   onPoseWarpTargetTimeChange,
   onPoseWarpStartTimeChange,
   onPoseWarpEndTimeChange,
   onLoopFixEnabledChange,
+  onFootStabilizerEnabledChange,
+  onFootStabilizerWarpAirborneMotionChange,
+  onFootStabilizerMovementThresholdChange,
+  onFootStabilizerHeightThresholdChange,
+  onFootStabilizerInitialAnchorPositionChange,
+  onFootStabilizerIntermediateAnchorPositionChange,
+  onFootStabilizerFinalAnchorPositionChange,
   onRootMotionModeChange,
   onRootMotionSmoothingWindowChange,
   onRootMotionVelocityToleranceChange,
@@ -80,7 +101,10 @@ export default function AnimationWorkspacePanel({
   const [mobilePane, setMobilePane] = useState<"modifiers" | "analysis">("modifiers");
   const [modifierStackHeight, setModifierStackHeight] = useState<number | null>(null);
   const panelResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
-  const analysisAvailable = selectedOperation === "rootMotion" || selectedOperation === "loopFix";
+  const analysisAvailable =
+    selectedOperation === "rootMotion" ||
+    selectedOperation === "loopFix" ||
+    selectedOperation === "footStabilizer";
 
   const startPanelResize = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -169,11 +193,19 @@ export default function AnimationWorkspacePanel({
           onDecompositionFineGainChange={onDecompositionFineGainChange}
           onPoseWarpEnabledChange={onPoseWarpEnabledChange}
           onPoseWarpAnchorChange={onPoseWarpAnchorChange}
+          onPoseWarpMethodChange={onPoseWarpMethodChange}
           onPoseWarpTargetFileChange={onPoseWarpTargetFileChange}
           onPoseWarpTargetTimeChange={onPoseWarpTargetTimeChange}
           onPoseWarpStartTimeChange={onPoseWarpStartTimeChange}
           onPoseWarpEndTimeChange={onPoseWarpEndTimeChange}
           onLoopFixEnabledChange={onLoopFixEnabledChange}
+          onFootStabilizerEnabledChange={onFootStabilizerEnabledChange}
+          onFootStabilizerWarpAirborneMotionChange={onFootStabilizerWarpAirborneMotionChange}
+          onFootStabilizerMovementThresholdChange={onFootStabilizerMovementThresholdChange}
+          onFootStabilizerHeightThresholdChange={onFootStabilizerHeightThresholdChange}
+          onFootStabilizerInitialAnchorPositionChange={onFootStabilizerInitialAnchorPositionChange}
+          onFootStabilizerIntermediateAnchorPositionChange={onFootStabilizerIntermediateAnchorPositionChange}
+          onFootStabilizerFinalAnchorPositionChange={onFootStabilizerFinalAnchorPositionChange}
           onRootMotionModeChange={onRootMotionModeChange}
           onRootMotionSmoothingWindowChange={onRootMotionSmoothingWindowChange}
           onRootMotionVelocityToleranceChange={onRootMotionVelocityToleranceChange}
@@ -234,7 +266,9 @@ export default function AnimationWorkspacePanel({
         loopAnalysis={loopAnalysis}
         appliedLoopAnalysis={appliedLoopAnalysis}
         contactAnalysis={contactAnalysis}
+        footStabilizerAnalysis={footStabilizerAnalysis}
         decompositionReport={decompositionReport}
+        playbackTime={playbackTime}
       />
     </section>
   );

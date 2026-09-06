@@ -750,6 +750,25 @@
   .root-motion-chart { height: 118px; }
 }
 
+
+.foot-analysis { display: grid; gap: 12px; margin-top: 10px; }
+.foot-analysis-side { display: grid; gap: 8px; }
+.foot-analysis-side + .foot-analysis-side { padding-top: 2px; border-top: 1px solid #2d343a; }
+.foot-analysis-side-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #c7d0d7; font-size: 10px; }
+.foot-analysis-side-heading > span { min-width: 0; overflow: hidden; color: #818c95; text-overflow: ellipsis; white-space: nowrap; }
+.foot-analysis-chart { height: 112px; }
+.foot-analysis-series { fill: none; stroke: #78b7ff; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.foot-threshold-line { stroke: #f0b56a; stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.foot-contact-region { fill: #64c987; opacity: 0.12; }
+.foot-analysis-legend .foot-value { color: #78b7ff; }
+.foot-analysis-legend .foot-threshold { color: #f0b56a; }
+.foot-analysis-legend .foot-contact { color: #64c987; }
+.chart-unit-label { fill: #78838d; font-size: 8px; }
+@media (max-width: 640px) {
+  .foot-analysis-side-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .foot-analysis-chart { height: 108px; }
+}
+
 /* Phone workspace: one primary surface at a time. */
 .animation-mobile-pane-switcher {
   display: none;
@@ -847,14 +866,18 @@
 /* Inline animation-fix configuration layout */
 @media (min-width: 901px) {
   .workspace-animation .animation-workspace-panel {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows:
+      minmax(160px, var(--animation-stack-height, 1fr))
+      6px
+      minmax(140px, 1fr);
     gap: 10px;
     padding: 12px 14px;
   }
   .animation-workspace-stack {
-    height: auto;
+    height: 100%;
     min-height: 0;
-    overflow: visible;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .workspace-animation .viewer-left {
     grid-template-rows: minmax(0, 1fr);
@@ -866,4 +889,12 @@
     min-height: 0;
     overflow: auto;
   }
+}
+
+.analysis-playhead-line {
+  stroke: #e8edf2;
+  stroke-width: 1;
+  opacity: 0.78;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
 }

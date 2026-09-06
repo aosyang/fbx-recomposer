@@ -5,7 +5,7 @@ import type { RootMotionExtractionMode, RootMotionYawMode } from "../lib/animati
 import type { MotionDecompositionBaseMode } from "../lib/animation-motion-decomposition";
 import "./AnimationFixStack.css";
 
-export type MotionOperationKind = "rootMotion" | "decomposition" | "poseWarp" | "loopFix";
+export type MotionOperationKind = "rootMotion" | "decomposition" | "poseWarp" | "loopFix" | "footStabilizer";
 
 export type MotionStackConfig = {
   rootMotion: {
@@ -29,6 +29,7 @@ export type MotionStackConfig = {
   poseWarp: {
     enabled: boolean;
     anchor: "start" | "end";
+    method: "blend" | "rebase";
     targetName: string;
     targetTime: number;
     warpStartTime: number;
@@ -38,6 +39,15 @@ export type MotionStackConfig = {
     enabled: boolean;
     mode: AnimationLoopFixMode;
     rootPolicy: AnimationLoopRootPolicy;
+  };
+  footStabilizer: {
+    enabled: boolean;
+    movementThreshold: number;
+    heightThreshold: number;
+    warpAirborneMotion: boolean;
+    initialAnchorPosition: number;
+    intermediateAnchorPosition: number;
+    finalAnchorPosition: number;
   };
 };
 
@@ -54,11 +64,19 @@ type MotionStackProps = {
   onDecompositionFineGainChange: (value: number) => void;
   onPoseWarpEnabledChange: (enabled: boolean) => void;
   onPoseWarpAnchorChange: (anchor: MotionStackConfig["poseWarp"]["anchor"]) => void;
+  onPoseWarpMethodChange: (method: MotionStackConfig["poseWarp"]["method"]) => void;
   onPoseWarpTargetFileChange: (file: File | null) => void;
   onPoseWarpTargetTimeChange: (value: number) => void;
   onPoseWarpStartTimeChange: (value: number) => void;
   onPoseWarpEndTimeChange: (value: number) => void;
   onLoopFixEnabledChange: (enabled: boolean) => void;
+  onFootStabilizerEnabledChange: (enabled: boolean) => void;
+  onFootStabilizerWarpAirborneMotionChange: (enabled: boolean) => void;
+  onFootStabilizerMovementThresholdChange: (value: number) => void;
+  onFootStabilizerHeightThresholdChange: (value: number) => void;
+  onFootStabilizerInitialAnchorPositionChange: (value: number) => void;
+  onFootStabilizerIntermediateAnchorPositionChange: (value: number) => void;
+  onFootStabilizerFinalAnchorPositionChange: (value: number) => void;
   onRootMotionModeChange: (mode: RootMotionExtractionMode) => void;
   onRootMotionSmoothingWindowChange: (value: number) => void;
   onRootMotionVelocityToleranceChange: (value: number) => void;
@@ -195,11 +213,19 @@ export default function MotionStack({
   onDecompositionFineGainChange,
   onPoseWarpEnabledChange,
   onPoseWarpAnchorChange,
+  onPoseWarpMethodChange,
   onPoseWarpTargetFileChange,
   onPoseWarpTargetTimeChange,
   onPoseWarpStartTimeChange,
   onPoseWarpEndTimeChange,
   onLoopFixEnabledChange,
+  onFootStabilizerEnabledChange,
+  onFootStabilizerWarpAirborneMotionChange,
+  onFootStabilizerMovementThresholdChange,
+  onFootStabilizerHeightThresholdChange,
+  onFootStabilizerInitialAnchorPositionChange,
+  onFootStabilizerIntermediateAnchorPositionChange,
+  onFootStabilizerFinalAnchorPositionChange,
   onRootMotionModeChange,
   onRootMotionSmoothingWindowChange,
   onRootMotionVelocityToleranceChange,
@@ -218,7 +244,8 @@ export default function MotionStack({
   const setPoseWarpDuration = (duration: number) => {
     const clamped = Math.max(0, duration);
     if (config.poseWarp.anchor === "start") {
-      onPoseWarpEndTimeChange(config.poseWarp.warpStartTime + clamped);
+      onPoseWarpStartTimeChange(0);
+      onPoseWarpEndTimeChange(clamped);
     } else {
       onPoseWarpStartTimeChange(Math.max(0, config.poseWarp.warpEndTime - clamped));
     }
@@ -336,6 +363,28 @@ export default function MotionStack({
                 </div>
 
                 <div className="pose-warp-field">
+                  <span className="pose-warp-field-label">Method</span>
+                  <div className="pose-warp-segmented" role="group" aria-label="Pose warp method">
+                    <button
+                      type="button"
+                      className={config.poseWarp.method === "blend" ? "is-active" : ""}
+                      disabled={disabled || !config.poseWarp.enabled}
+                      onClick={() => onPoseWarpMethodChange("blend")}
+                    >
+                      Pose Blend
+                    </button>
+                    <button
+                      type="button"
+                      className={config.poseWarp.method === "rebase" ? "is-active" : ""}
+                      disabled={disabled || !config.poseWarp.enabled}
+                      onClick={() => onPoseWarpMethodChange("rebase")}
+                    >
+                      Motion Rebase
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pose-warp-field">
                   <span className="pose-warp-field-label">Target Pose</span>
                   <label className="pose-warp-file-picker">
                     <input
@@ -394,7 +443,7 @@ export default function MotionStack({
                     <NumericParameterInput
                       min={0}
                       step={0.033}
-                      value={config.poseWarp.warpStartTime}
+                      value={Number(config.poseWarp.warpStartTime.toFixed(3))}
                       disabled={disabled || !config.poseWarp.enabled}
                       onCommit={onPoseWarpStartTimeChange}
                     />
@@ -402,7 +451,7 @@ export default function MotionStack({
                     <NumericParameterInput
                       min={0}
                       step={0.033}
-                      value={config.poseWarp.warpEndTime}
+                      value={Number(config.poseWarp.warpEndTime.toFixed(3))}
                       disabled={disabled || !config.poseWarp.enabled}
                       onCommit={onPoseWarpEndTimeChange}
                     />
@@ -430,6 +479,109 @@ export default function MotionStack({
             <div className="animation-fix-inline-config loop-fix-inline-config">
               <label><span>Mode</span><select value={config.loopFix.mode} disabled={disabled || !config.loopFix.enabled} onChange={(event) => onLoopModeChange(event.target.value as AnimationLoopFixMode)}><option value="cyclic">Cyclic</option><option value="inertial">Inertial</option></select></label>
               <label><span>Root</span><select value={config.loopFix.rootPolicy} disabled={disabled || !config.loopFix.enabled} onChange={(event) => onLoopRootPolicyChange(event.target.value as AnimationLoopRootPolicy)}><option value="auto">Auto</option><option value="close">Close</option><option value="preserve">Preserve</option></select></label>
+            </div>
+          )}
+        </div>
+        <div className="animation-fix-stack-item">
+          <OperationCard
+            title="5. Foot Stabilizer"
+            summary="Auto contact · stabilize planted feet"
+            enabled={config.footStabilizer.enabled}
+            selected={selected === "footStabilizer"}
+            disabled={disabled}
+            onSelect={() => onSelectedChange("footStabilizer")}
+            onEnabledChange={onFootStabilizerEnabledChange}
+          />
+          {selected === "footStabilizer" && (
+            <div className="animation-fix-inline-config foot-stabilizer-inline-config">
+              <label className="foot-stabilizer-row">
+                <span>Movement threshold</span>
+                <div className="foot-stabilizer-value">
+                  <NumericParameterInput
+                    min={0}
+                    step={0.01}
+                    value={config.footStabilizer.movementThreshold}
+                    disabled={disabled || !config.footStabilizer.enabled}
+                    onCommit={onFootStabilizerMovementThresholdChange}
+                  />
+                  <small>height/s</small>
+                </div>
+              </label>
+              <label className="foot-stabilizer-row">
+                <span>Ground height</span>
+                <div className="foot-stabilizer-value">
+                  <NumericParameterInput
+                    min={0}
+                    step={0.005}
+                    value={config.footStabilizer.heightThreshold}
+                    disabled={disabled || !config.footStabilizer.enabled}
+                    onCommit={onFootStabilizerHeightThresholdChange}
+                  />
+                  <small>height</small>
+                </div>
+              </label>
+              <label className="foot-stabilizer-row">
+                <span>Initial contact anchor</span>
+                <div className="foot-stabilizer-value">
+                  <NumericParameterInput
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={config.footStabilizer.initialAnchorPosition}
+                    disabled={disabled || !config.footStabilizer.enabled}
+                    onCommit={onFootStabilizerInitialAnchorPositionChange}
+                  />
+                  <small>phase</small>
+                </div>
+              </label>
+              <label className="foot-stabilizer-row">
+                <span>Middle contact anchor</span>
+                <div className="foot-stabilizer-value">
+                  <NumericParameterInput
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={config.footStabilizer.intermediateAnchorPosition}
+                    disabled={disabled || !config.footStabilizer.enabled}
+                    onCommit={onFootStabilizerIntermediateAnchorPositionChange}
+                  />
+                  <small>phase</small>
+                </div>
+              </label>
+              <label className="foot-stabilizer-row">
+                <span>Final contact anchor</span>
+                <div className="foot-stabilizer-value">
+                  <NumericParameterInput
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={config.footStabilizer.finalAnchorPosition}
+                    disabled={disabled || !config.footStabilizer.enabled}
+                    onCommit={onFootStabilizerFinalAnchorPositionChange}
+                  />
+                  <small>phase</small>
+                </div>
+              </label>
+              <label className="foot-stabilizer-row">
+                <span>Warp airborne motion</span>
+                <div className="foot-stabilizer-toggle">
+                  <input
+                    type="checkbox"
+                    checked={config.footStabilizer.warpAirborneMotion}
+                    disabled={disabled || !config.footStabilizer.enabled}
+                    onChange={(event) => onFootStabilizerWarpAirborneMotionChange(event.target.checked)}
+                  />
+                  <strong>Between contacts</strong>
+                </div>
+              </label>
+              <div className="foot-stabilizer-row">
+                <span>Viewport debug</span>
+                <strong>Faint = input path · bright = stabilized</strong>
+              </div>
+              <div className="foot-stabilizer-row">
+                <span>Root Motion</span>
+                <strong>Preserved</strong>
+              </div>
             </div>
           )}
         </div>

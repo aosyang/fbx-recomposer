@@ -19,6 +19,7 @@ import {
 } from "./lib/animation-motion-decomposition";
 import { analyzeRootMotion, extractRootMotionFromHips, type RootMotionAnalysis, type RootMotionExtractionMode, type RootMotionExtractionReport, type RootMotionYawMode } from "./lib/animation-root-motion";
 import { warpAnimationToPose, type PoseWarpReport } from "./lib/animation-pose-warp";
+import { stabilizeFootContacts, type FootStabilizerReport } from "./lib/animation-foot-stabilizer";
 import {
   analyzeAnimationLoopContact,
   repairAnimationLoopContact,
@@ -747,10 +748,19 @@ export default function App() {
   const [animationDecompositionReport, setAnimationDecompositionReport] = useState<MotionDecompositionReport | null>(null);
   const [animationPoseWarpEnabled, setAnimationPoseWarpEnabled] = useState(false);
   const [animationPoseWarpAnchor, setAnimationPoseWarpAnchor] = useState<"start" | "end">("end");
+  const [animationPoseWarpMethod, setAnimationPoseWarpMethod] = useState<"blend" | "rebase">("blend");
   const [animationPoseWarpTargetName, setAnimationPoseWarpTargetName] = useState("");
   const [animationPoseWarpTargetTime, setAnimationPoseWarpTargetTime] = useState(0);
   const [animationPoseWarpStartTime, setAnimationPoseWarpStartTime] = useState(0);
   const [animationPoseWarpEndTime, setAnimationPoseWarpEndTime] = useState(1);
+
+  const [animationFootStabilizerEnabled, setAnimationFootStabilizerEnabled] = useState(false);
+  const [animationFootStabilizerMovementThreshold, setAnimationFootStabilizerMovementThreshold] = useState(0.12);
+  const [animationFootStabilizerHeightThreshold, setAnimationFootStabilizerHeightThreshold] = useState(0.035);
+  const [animationFootStabilizerWarpAirborneMotion, setAnimationFootStabilizerWarpAirborneMotion] = useState(true);
+  const [animationFootStabilizerInitialAnchorPosition, setAnimationFootStabilizerInitialAnchorPosition] = useState(0);
+  const [animationFootStabilizerIntermediateAnchorPosition, setAnimationFootStabilizerIntermediateAnchorPosition] = useState(0.5);
+  const [animationFootStabilizerFinalAnchorPosition, setAnimationFootStabilizerFinalAnchorPosition] = useState(1);
   const [selectedMotionOperation, setSelectedMotionOperation] = useState<MotionOperationKind>("rootMotion");
   const selectedMotionOperationRef = useRef<MotionOperationKind>("rootMotion");
   const [animationRootMotionAnalysis, setAnimationRootMotionAnalysis] = useState<RootMotionAnalysis | null>(null);
@@ -761,6 +771,8 @@ export default function App() {
     useState<ReturnType<typeof analyzeAnimationLoop> | null>(null);
   const [animationContactAnalysis, setAnimationContactAnalysis] =
     useState<AnimationContactLoopAnalysis | null>(null);
+  const [animationFootStabilizerAnalysis, setAnimationFootStabilizerAnalysis] =
+    useState<FootStabilizerReport | null>(null);
 
   useEffect(() => {
     selectedMotionOperationRef.current = selectedMotionOperation;
@@ -789,6 +801,7 @@ export default function App() {
       poseWarp: {
         enabled: animationPoseWarpEnabled,
         anchor: animationPoseWarpAnchor,
+        method: animationPoseWarpMethod,
         targetName: animationPoseWarpTargetName,
         targetTime: animationPoseWarpTargetTime,
         warpStartTime: animationPoseWarpStartTime,
@@ -799,8 +812,17 @@ export default function App() {
         mode: animationLoopFixMode,
         rootPolicy: animationLoopRootPolicy,
       },
+      footStabilizer: {
+        enabled: animationFootStabilizerEnabled,
+        movementThreshold: animationFootStabilizerMovementThreshold,
+        heightThreshold: animationFootStabilizerHeightThreshold,
+        warpAirborneMotion: animationFootStabilizerWarpAirborneMotion,
+        initialAnchorPosition: animationFootStabilizerInitialAnchorPosition,
+        intermediateAnchorPosition: animationFootStabilizerIntermediateAnchorPosition,
+        finalAnchorPosition: animationFootStabilizerFinalAnchorPosition,
+      },
     });
-  }, [animationRootMotionEnabled, animationRootMotionMode, animationRootMotionSmoothingWindow, animationRootMotionVelocityTolerance, animationRootMotionExtractX, animationRootMotionExtractZ, animationRootMotionExtractYaw, animationRootMotionYawMode, animationRootMotionYawToleranceDegrees, animationDecompositionEnabled, animationDecompositionBaseMode, animationDecompositionLowGain, animationDecompositionMidGain, animationDecompositionFineGain, animationPoseWarpEnabled, animationPoseWarpAnchor, animationPoseWarpTargetName, animationPoseWarpTargetTime, animationPoseWarpStartTime, animationPoseWarpEndTime, animationLoopFixEnabled, animationLoopFixMode, animationLoopRootPolicy]);
+  }, [animationRootMotionEnabled, animationRootMotionMode, animationRootMotionSmoothingWindow, animationRootMotionVelocityTolerance, animationRootMotionExtractX, animationRootMotionExtractZ, animationRootMotionExtractYaw, animationRootMotionYawMode, animationRootMotionYawToleranceDegrees, animationDecompositionEnabled, animationDecompositionBaseMode, animationDecompositionLowGain, animationDecompositionMidGain, animationDecompositionFineGain, animationPoseWarpEnabled, animationPoseWarpAnchor, animationPoseWarpMethod, animationPoseWarpTargetName, animationPoseWarpTargetTime, animationPoseWarpStartTime, animationPoseWarpEndTime, animationFootStabilizerWarpAirborneMotion, animationFootStabilizerInitialAnchorPosition, animationFootStabilizerIntermediateAnchorPosition, animationFootStabilizerFinalAnchorPosition, animationLoopFixEnabled, animationLoopFixMode, animationLoopRootPolicy, animationFootStabilizerEnabled, animationFootStabilizerMovementThreshold, animationFootStabilizerHeightThreshold]);
   const [animationModelAlternative, setAnimationModelAlternative] = useState<{
     file: File;
     resources: File[];
@@ -841,6 +863,49 @@ export default function App() {
     if (!viewport || !boneLabel) return;
 
     const scene = new THREE.Scene();
+    const footStabilizerDebugGroup = new THREE.Group();
+    footStabilizerDebugGroup.name = "FootStabilizerDebug";
+    scene.add(footStabilizerDebugGroup);
+    const footDebugMaterials = {
+      leftInput: new THREE.LineBasicMaterial({ color: 0x44c7ff, transparent: true, opacity: 0.35, depthTest: false }),
+      leftOutput: new THREE.LineBasicMaterial({ color: 0x44c7ff, transparent: true, opacity: 0.95, depthTest: false }),
+      rightInput: new THREE.LineBasicMaterial({ color: 0xffad45, transparent: true, opacity: 0.35, depthTest: false }),
+      rightOutput: new THREE.LineBasicMaterial({ color: 0xffad45, transparent: true, opacity: 0.95, depthTest: false }),
+    };
+
+    const clearFootStabilizerDebug = () => {
+      for (const child of [...footStabilizerDebugGroup.children]) {
+        footStabilizerDebugGroup.remove(child);
+        if (child instanceof THREE.Line) child.geometry.dispose();
+      }
+    };
+
+    const updateFootStabilizerDebug = (report: FootStabilizerReport | null) => {
+      clearFootStabilizerDebug();
+      if (!report) return;
+      report.feet.forEach((foot) => {
+        const inputMaterial = foot.side === "left" ? footDebugMaterials.leftInput : footDebugMaterials.rightInput;
+        const outputMaterial = foot.side === "left" ? footDebugMaterials.leftOutput : footDebugMaterials.rightOutput;
+        foot.intervals.forEach((interval) => {
+          if (interval.inputPath.length >= 2) {
+            const geometry = new THREE.BufferGeometry().setFromPoints(
+              interval.inputPath.map(([x, y, z]) => new THREE.Vector3(x, y, z)),
+            );
+            const line = new THREE.Line(geometry, inputMaterial);
+            line.renderOrder = 100;
+            footStabilizerDebugGroup.add(line);
+          }
+          if (interval.outputPath.length >= 2) {
+            const geometry = new THREE.BufferGeometry().setFromPoints(
+              interval.outputPath.map(([x, y, z]) => new THREE.Vector3(x, y, z)),
+            );
+            const line = new THREE.Line(geometry, outputMaterial);
+            line.renderOrder = 101;
+            footStabilizerDebugGroup.add(line);
+          }
+        });
+      });
+    };
     scene.background = new THREE.Color(0x101214);
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100000);
@@ -1236,7 +1301,9 @@ export default function App() {
 
           animationPoseWarpTargetClipRef.current = targetClip;
           setAnimationPoseWarpTargetName(file.name);
-          setAnimationPoseWarpTargetTime(Math.max(0, targetClip.duration));
+          setAnimationPoseWarpTargetTime(
+            animationPoseWarpAnchor === "start" ? 0 : Math.max(0, targetClip.duration),
+          );
           const defaultWarpEnd = animationDuration > 0 ? animationDuration : Math.max(0, targetClip.duration);
           if (animationPoseWarpAnchor === "start") {
             setAnimationPoseWarpStartTime(0);
@@ -1326,6 +1393,8 @@ export default function App() {
       setAnimationDecompositionReport(config.decomposition.enabled ? mergeMotionDecompositionReports(decompositionReports) : null);
 
       const poseWarpReports: PoseWarpReport[] = [];
+      const footWarpReferenceClips = workingClips.map((clip) => clip.clone());
+
       if (config.poseWarp.enabled) {
         const targetClip = animationPoseWarpTargetClipRef.current;
         if (!targetClip) {
@@ -1339,6 +1408,7 @@ export default function App() {
           workingClips = workingClips.map((sourceClip) => {
             const result = warpAnimationToPose(sourceClip, targetClip, {
               anchor: config.poseWarp.anchor,
+              method: config.poseWarp.method,
               targetTime: config.poseWarp.targetTime,
               warpStartTime: config.poseWarp.warpStartTime,
               warpEndTime: config.poseWarp.warpEndTime,
@@ -1436,6 +1506,52 @@ export default function App() {
         });
       }
 
+      const footStabilizerReports: FootStabilizerReport[] = [];
+      try {
+        if (config.footStabilizer.enabled) {
+          repairedClips = repairedClips.map((sourceClip, index) => {
+            const result = stabilizeFootContacts(model!, sourceClip, 30, {
+              movementThreshold: config.footStabilizer.movementThreshold,
+              heightThreshold: config.footStabilizer.heightThreshold,
+              warpAirborneMotion: config.footStabilizer.warpAirborneMotion,
+              anchorPositions: {
+                initial: config.footStabilizer.initialAnchorPosition,
+                intermediate: config.footStabilizer.intermediateAnchorPosition,
+                final: config.footStabilizer.finalAnchorPosition,
+              },
+              contactReferenceClip: config.poseWarp.enabled
+                ? (footWarpReferenceClips[index] ?? sourceClip)
+                : sourceClip,
+            });
+            footStabilizerReports.push(result.report);
+            return result.clip;
+          });
+        } else if (repairedClips[0]) {
+          // Keep contact-path diagnostics ready even before the modifier is enabled.
+          footStabilizerReports.push(stabilizeFootContacts(model!, repairedClips[0], 30, {
+            movementThreshold: config.footStabilizer.movementThreshold,
+            heightThreshold: config.footStabilizer.heightThreshold,
+            warpAirborneMotion: config.footStabilizer.warpAirborneMotion,
+            anchorPositions: {
+              initial: config.footStabilizer.initialAnchorPosition,
+              intermediate: config.footStabilizer.intermediateAnchorPosition,
+              final: config.footStabilizer.finalAnchorPosition,
+            },
+            contactReferenceClip: config.poseWarp.enabled
+              ? (footWarpReferenceClips[0] ?? repairedClips[0])
+              : repairedClips[0],
+          }).report);
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        setMessage("Foot Stabilizer failed: " + detail);
+        console.error("[FBX Recomposer] Foot Stabilizer failed", error);
+        return;
+      }
+      const footStabilizerReport = footStabilizerReports[0] ?? null;
+      setAnimationFootStabilizerAnalysis(footStabilizerReport);
+      updateFootStabilizerDebug(footStabilizerReport);
+
       const binaryAnimationDocument = externalAnimationApplied
         ? activeAnimationBinaryDocument
         : loadedBinaryDocument;
@@ -1489,12 +1605,17 @@ export default function App() {
       if (config.loopFix.enabled) {
         operations.push(`Loop Fix ${config.loopFix.mode}; root ${effectiveRootMode}`);
       }
+      if (config.footStabilizer.enabled && footStabilizerReport) {
+        const contactCount = footStabilizerReport.feet.reduce((sum, foot) => sum + foot.intervals.length, 0);
+        operations.push(`Foot Stabilizer: ${contactCount} contact interval${contactCount === 1 ? "" : "s"}`);
+      }
       setMessage(operations.length > 0 ? `${operations.join("; ")}.` : "Motion processing cleared.");
       console.info("[FBX Recomposer] Animation fix graph applied from pristine source", {
         config,
         rootMotion: rootMotionReports,
         poseWarp: poseWarpReports,
         loop: loopAnalysis,
+        footStabilizer: footStabilizerReport,
         repairedPositionTracks,
         repairedQuaternionTracks,
         contactRepairCount,
@@ -1526,12 +1647,22 @@ export default function App() {
         poseWarp: {
           enabled: false,
           anchor: "end",
+          method: "blend",
           targetName: "",
           targetTime: 0,
           warpStartTime: 0,
           warpEndTime: 1,
         },
         loopFix: { enabled: true, mode, rootPolicy },
+        footStabilizer: {
+          enabled: false,
+          movementThreshold: 0.12,
+          heightThreshold: 0.035,
+          warpAirborneMotion: true,
+          initialAnchorPosition: 0,
+          intermediateAnchorPosition: 0.5,
+          finalAnchorPosition: 1,
+        },
       });
     };
 
@@ -2093,6 +2224,7 @@ export default function App() {
             `${(-projectedBonePosition.y * 0.5 + 0.5) * viewport.clientHeight}px`;
         }
       }
+      footStabilizerDebugGroup.visible = selectedMotionOperationRef.current === "footStabilizer";
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(animate);
     };
@@ -2106,6 +2238,9 @@ export default function App() {
       observer.disconnect();
       cancelAnimationFrame(frameId);
       controls.dispose();
+      clearFootStabilizerDebug();
+      Object.values(footDebugMaterials).forEach((material) => material.dispose());
+      scene.remove(footStabilizerDebugGroup);
       if (skeletonHelper) {
         disposeSkeletonHelper(skeletonHelper);
       }
@@ -2775,6 +2910,7 @@ export default function App() {
               poseWarp: {
                 enabled: animationPoseWarpEnabled,
                 anchor: animationPoseWarpAnchor,
+                method: animationPoseWarpMethod,
                 targetName: animationPoseWarpTargetName,
                 targetTime: animationPoseWarpTargetTime,
                 warpStartTime: animationPoseWarpStartTime,
@@ -2785,13 +2921,24 @@ export default function App() {
                 mode: animationLoopFixMode,
                 rootPolicy: animationLoopRootPolicy,
               },
+              footStabilizer: {
+                enabled: animationFootStabilizerEnabled,
+                movementThreshold: animationFootStabilizerMovementThreshold,
+                heightThreshold: animationFootStabilizerHeightThreshold,
+                warpAirborneMotion: animationFootStabilizerWarpAirborneMotion,
+                initialAnchorPosition: animationFootStabilizerInitialAnchorPosition,
+                intermediateAnchorPosition: animationFootStabilizerIntermediateAnchorPosition,
+                finalAnchorPosition: animationFootStabilizerFinalAnchorPosition,
+              },
             }}
             rootMotionAnalysis={animationRootMotionAnalysis}
             appliedRootMotionAnalysis={animationAppliedRootMotionAnalysis}
             loopAnalysis={animationLoopAnalysis}
             appliedLoopAnalysis={animationAppliedLoopAnalysis}
             contactAnalysis={animationContactAnalysis}
+            footStabilizerAnalysis={animationFootStabilizerAnalysis}
             decompositionReport={animationDecompositionReport}
+            playbackTime={animationTimeline?.time ?? 0}
             onSelectedOperationChange={setSelectedMotionOperation}
             onRootMotionEnabledChange={setAnimationRootMotionEnabled}
             onDecompositionEnabledChange={setAnimationDecompositionEnabled}
@@ -2802,15 +2949,19 @@ export default function App() {
             onPoseWarpEnabledChange={setAnimationPoseWarpEnabled}
             onPoseWarpAnchorChange={(anchor) => {
               setAnimationPoseWarpAnchor(anchor);
+              const targetClip = animationPoseWarpTargetClipRef.current;
               if (anchor === "start") {
+                setAnimationPoseWarpTargetTime(0);
                 setAnimationPoseWarpStartTime(0);
                 setAnimationPoseWarpEndTime(Math.min(animationTimeline?.duration ?? 0.5, 0.5));
               } else {
+                setAnimationPoseWarpTargetTime(Math.max(0, targetClip?.duration ?? 0));
                 const end = animationTimeline?.duration ?? 1;
                 setAnimationPoseWarpEndTime(end);
                 setAnimationPoseWarpStartTime(Math.max(0, end - 0.5));
               }
             }}
+            onPoseWarpMethodChange={setAnimationPoseWarpMethod}
             onPoseWarpTargetFileChange={(file) => {
               if (file) loadPoseWarpTargetRef.current(file);
             }}
@@ -2818,6 +2969,13 @@ export default function App() {
             onPoseWarpStartTimeChange={setAnimationPoseWarpStartTime}
             onPoseWarpEndTimeChange={setAnimationPoseWarpEndTime}
             onLoopFixEnabledChange={setAnimationLoopFixEnabled}
+            onFootStabilizerEnabledChange={setAnimationFootStabilizerEnabled}
+            onFootStabilizerWarpAirborneMotionChange={setAnimationFootStabilizerWarpAirborneMotion}
+            onFootStabilizerMovementThresholdChange={setAnimationFootStabilizerMovementThreshold}
+            onFootStabilizerHeightThresholdChange={setAnimationFootStabilizerHeightThreshold}
+            onFootStabilizerInitialAnchorPositionChange={setAnimationFootStabilizerInitialAnchorPosition}
+            onFootStabilizerIntermediateAnchorPositionChange={setAnimationFootStabilizerIntermediateAnchorPosition}
+            onFootStabilizerFinalAnchorPositionChange={setAnimationFootStabilizerFinalAnchorPosition}
             onRootMotionModeChange={setAnimationRootMotionMode}
             onRootMotionSmoothingWindowChange={setAnimationRootMotionSmoothingWindow}
             onRootMotionVelocityToleranceChange={setAnimationRootMotionVelocityTolerance}

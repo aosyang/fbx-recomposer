@@ -1,9 +1,11 @@
 import * as THREE from "three";
 
 export type PoseWarpAnchor = "start" | "end";
+export type PoseWarpMethod = "blend" | "rebase";
 
 export type PoseWarpOptions = {
   anchor: PoseWarpAnchor;
+  method?: PoseWarpMethod;
   targetTime: number;
   warpStartTime: number;
   warpEndTime: number;
@@ -12,6 +14,7 @@ export type PoseWarpOptions = {
 
 export type PoseWarpReport = {
   anchor: PoseWarpAnchor;
+  method: PoseWarpMethod;
   targetTime: number;
   warpStartTime: number;
   warpEndTime: number;
@@ -118,12 +121,14 @@ export function warpAnimationToPose(
   }
 
   const anchor = options.anchor ?? "end";
+  const method = options.method ?? "blend";
   const sourceAnchorTime = anchor === "start" ? startTime : endTime;
   const targetTime = clampTime(options.targetTime, Math.max(0, targetPoseClip.duration));
   const targetTracks = new Map(targetPoseClip.tracks.map((track) => [track.name, track]));
   const clip = source.clone();
   const report: PoseWarpReport = {
     anchor,
+    method,
     targetTime,
     warpStartTime: startTime,
     warpEndTime: endTime,
@@ -154,11 +159,35 @@ export function warpAnimationToPose(
     ) {
       const sourceAnchor = sampleVectorTrack(track, sourceAnchorTime);
       const targetPose = sampleVectorTrack(targetTrack, targetTime);
-      const delta = targetPose.sub(sourceAnchor);
+      const delta = targetPose.clone().sub(sourceAnchor);
+      const sourceStart = sampleVectorTrack(track, startTime);
+      const sourceEnd = sampleVectorTrack(track, endTime);
+      const rebaseStart = targetPose.clone().add(sourceStart.clone().sub(sourceAnchor));
+      const rebaseEnd = targetPose.clone().add(sourceEnd.clone().sub(sourceAnchor));
+      const startResidual = sourceStart.clone().sub(rebaseStart);
+      const endResidual = sourceEnd.clone().sub(rebaseEnd);
       const corrected = new Float32Array(track.values.length);
       for (let i = 0; i < track.times.length; i += 1) {
-        const weight = correctionWeight(Number(track.times[i]), startTime, endTime, anchor);
-        const value = vectorAt(track.values, i).addScaledVector(delta, weight);
+        const time = Number(track.times[i]);
+        const weight = correctionWeight(time, startTime, endTime, anchor);
+        const sourceValue = vectorAt(track.values, i);
+        let value: THREE.Vector3;
+        if (method === "rebase") {
+          if (time < startTime || time > endTime) {
+            value = sourceValue;
+          } else {
+            const progress = smootherStep01(
+              (time - startTime) / Math.max(1e-6, endTime - startTime),
+            );
+            const rebased = targetPose.clone().add(sourceValue.clone().sub(sourceAnchor));
+            const residual = anchor === "start"
+              ? endResidual.clone().multiplyScalar(progress)
+              : startResidual.clone().multiplyScalar(1 - progress);
+            value = rebased.add(residual);
+          }
+        } else {
+          value = sourceValue.addScaledVector(delta, weight);
+        }
         const offset = i * 3;
         corrected[offset] = value.x;
         corrected[offset + 1] = value.y;
@@ -178,15 +207,50 @@ export function warpAnimationToPose(
     ) {
       const sourceAnchor = sampleQuaternionTrack(track, sourceAnchorTime);
       const targetPose = sampleQuaternionTrack(targetTrack, targetTime);
-      const delta = normalizeShortestQuaternion(
+      const blendDelta = normalizeShortestQuaternion(
         sourceAnchor.clone().invert().multiply(targetPose),
       );
       const identity = new THREE.Quaternion();
+      const sourceStart = sampleQuaternionTrack(track, startTime);
+      const sourceEnd = sampleQuaternionTrack(track, endTime);
+      const rebaseStart = targetPose.clone()
+        .multiply(sourceAnchor.clone().invert().multiply(sourceStart))
+        .normalize();
+      const rebaseEnd = targetPose.clone()
+        .multiply(sourceAnchor.clone().invert().multiply(sourceEnd))
+        .normalize();
+      const startResidual = normalizeShortestQuaternion(
+        rebaseStart.clone().invert().multiply(sourceStart),
+      );
+      const endResidual = normalizeShortestQuaternion(
+        rebaseEnd.clone().invert().multiply(sourceEnd),
+      );
       const corrected = new Float32Array(track.values.length);
       for (let i = 0; i < track.times.length; i += 1) {
-        const weight = correctionWeight(Number(track.times[i]), startTime, endTime, anchor);
-        const correction = identity.clone().slerp(delta, weight).normalize();
-        const value = quaternionAt(track.values, i).multiply(correction).normalize();
+        const time = Number(track.times[i]);
+        const weight = correctionWeight(time, startTime, endTime, anchor);
+        const sourceValue = quaternionAt(track.values, i);
+        let value: THREE.Quaternion;
+        if (method === "rebase") {
+          if (time < startTime || time > endTime) {
+            value = sourceValue;
+          } else {
+            const progress = smootherStep01(
+              (time - startTime) / Math.max(1e-6, endTime - startTime),
+            );
+            const rebased = targetPose.clone()
+              .multiply(sourceAnchor.clone().invert().multiply(sourceValue))
+              .normalize();
+            const residual = anchor === "start"
+              ? identity.clone().slerp(endResidual, progress).normalize()
+              : startResidual.clone().slerp(identity, progress).normalize();
+            value = rebased.multiply(residual).normalize();
+          }
+        } else {
+          value = sourceValue.clone().multiply(
+            identity.clone().slerp(blendDelta, weight).normalize(),
+          ).normalize();
+        }
         const offset = i * 4;
         corrected[offset] = value.x;
         corrected[offset + 1] = value.y;
