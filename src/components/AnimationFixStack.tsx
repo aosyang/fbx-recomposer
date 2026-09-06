@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AnimationLoopFixMode } from "../lib/animation-loop-fix";
 import type { AnimationLoopRootPolicy } from "../lib/animation-loop-analysis";
 import type { RootMotionExtractionMode, RootMotionYawMode } from "../lib/animation-root-motion";
@@ -153,6 +153,39 @@ function NumericParameterInput({
   );
 }
 
+type ModifierOptionRowProps = {
+  label: string;
+  children: ReactNode;
+  unit?: ReactNode;
+  as?: "label" | "div";
+  className?: string;
+  controlClassName?: string;
+};
+
+function ModifierOptionRow({
+  label,
+  children,
+  unit,
+  as = "label",
+  className = "",
+  controlClassName = "",
+}: ModifierOptionRowProps) {
+  const rowClassName = `modifier-option-row${unit === undefined ? "" : " has-unit"}${className ? ` ${className}` : ""}`;
+  const controlClass = `modifier-option-control${controlClassName ? ` ${controlClassName}` : ""}`;
+  const control = as === "label"
+    ? <span className={controlClass}>{children}</span>
+    : <div className={controlClass}>{children}</div>;
+  const content = <>
+    <span className="modifier-option-label">{label}</span>
+    {control}
+    {unit !== undefined && <span className="modifier-option-unit">{unit}</span>}
+  </>;
+
+  return as === "div"
+    ? <div className={rowClassName}>{content}</div>
+    : <label className={rowClassName}>{content}</label>;
+}
+
 function OperationCard({
   title,
   summary,
@@ -272,23 +305,24 @@ export default function MotionStack({
           />
           {selected === "rootMotion" && (
             <div className="animation-fix-inline-config root-motion-inline-config">
-              <div className="root-motion-axis-row">
-                <span className="root-motion-config-channel">Position</span>
+              <ModifierOptionRow label="Position" as="div" controlClassName="modifier-option-inline">
                 <label className="root-motion-axis-toggle"><span>X</span><input type="checkbox" checked={config.rootMotion.extractX} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionExtractXChange(event.target.checked)} /></label>
                 <label className="root-motion-axis-toggle"><span>Z</span><input type="checkbox" checked={config.rootMotion.extractZ} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionExtractZChange(event.target.checked)} /></label>
-              </div>
+              </ModifierOptionRow>
               <div className="root-motion-config-row root-motion-position-settings">
-                <label><span>Method</span><select value={config.rootMotion.mode} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionModeChange(event.target.value as RootMotionExtractionMode)}><option value="velocity-guided">Velocity Guided</option><option value="linear">Linear</option></select></label>
+                <ModifierOptionRow label="Method"><select value={config.rootMotion.mode} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionModeChange(event.target.value as RootMotionExtractionMode)}><option value="velocity-guided">Velocity Guided</option><option value="linear">Linear</option></select></ModifierOptionRow>
                 {config.rootMotion.mode === "velocity-guided" && <>
-                  <label><span>Smoothing</span><NumericParameterInput min={1} step={2} value={config.rootMotion.velocitySmoothingWindow} disabled={disabled || !config.rootMotion.enabled} onCommit={onRootMotionSmoothingWindowChange} /></label>
-                  <label><span>Tolerance</span><NumericParameterInput min={0.01} step={0.05} value={config.rootMotion.velocityTolerance} disabled={disabled || !config.rootMotion.enabled} onCommit={onRootMotionVelocityToleranceChange} /></label>
+                  <ModifierOptionRow label="Smoothing"><NumericParameterInput min={1} step={2} value={config.rootMotion.velocitySmoothingWindow} disabled={disabled || !config.rootMotion.enabled} onCommit={onRootMotionSmoothingWindowChange} /></ModifierOptionRow>
+                  <ModifierOptionRow label="Tolerance"><NumericParameterInput min={0.01} step={0.05} value={config.rootMotion.velocityTolerance} disabled={disabled || !config.rootMotion.enabled} onCommit={onRootMotionVelocityToleranceChange} /></ModifierOptionRow>
                 </>}
               </div>
               <div className="root-motion-config-row">
-                <label className="root-motion-config-channel root-motion-yaw-toggle"><span>Yaw</span><input type="checkbox" checked={config.rootMotion.extractYaw} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionExtractYawChange(event.target.checked)} /></label>
+                <ModifierOptionRow label="Yaw" as="div" controlClassName="modifier-option-inline">
+                  <input aria-label="Yaw" type="checkbox" checked={config.rootMotion.extractYaw} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionExtractYawChange(event.target.checked)} />
+                </ModifierOptionRow>
                 {config.rootMotion.extractYaw && <>
-                  <label><span>Method</span><select value={config.rootMotion.yawMode} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionYawModeChange(event.target.value as RootMotionYawMode)}><option value="rdp">RDP</option><option value="linear">Linear</option></select></label>
-                  {config.rootMotion.yawMode === "rdp" && <label><span>Tolerance °</span><NumericParameterInput min={0.01} step={0.25} value={config.rootMotion.yawToleranceDegrees} disabled={disabled || !config.rootMotion.enabled} onCommit={onRootMotionYawToleranceChange} /></label>}
+                  <ModifierOptionRow label="Yaw method"><select value={config.rootMotion.yawMode} disabled={disabled || !config.rootMotion.enabled} onChange={(event) => onRootMotionYawModeChange(event.target.value as RootMotionYawMode)}><option value="rdp">RDP</option><option value="linear">Linear</option></select></ModifierOptionRow>
+                  {config.rootMotion.yawMode === "rdp" && <ModifierOptionRow label="Yaw tolerance" unit="°"><NumericParameterInput min={0.01} step={0.25} value={config.rootMotion.yawToleranceDegrees} disabled={disabled || !config.rootMotion.enabled} onCommit={onRootMotionYawToleranceChange} /></ModifierOptionRow>}
                 </>}
               </div>
             </div>
@@ -306,23 +340,17 @@ export default function MotionStack({
           />
           {selected === "decomposition" && (
             <div className="animation-fix-inline-config decomposition-inline-config">
-              <label className="decomposition-base-control"><span>Base</span><select value={config.decomposition.baseMode} disabled={disabled || !config.decomposition.enabled} onChange={(event) => onDecompositionBaseModeChange(event.target.value as MotionDecompositionBaseMode)}><option value="preserve">Preserve</option><option value="static">Static Pose</option></select></label>
+              <ModifierOptionRow label="Base"><select value={config.decomposition.baseMode} disabled={disabled || !config.decomposition.enabled} onChange={(event) => onDecompositionBaseModeChange(event.target.value as MotionDecompositionBaseMode)}><option value="preserve">Preserve</option><option value="static">Static Pose</option></select></ModifierOptionRow>
               <div className="decomposition-gain-sliders">
-                <label className="decomposition-gain-slider">
-                  <span>Low gain</span>
+                <ModifierOptionRow label="Low gain" unit={<output>{config.decomposition.lowGain.toFixed(1)}</output>}>
                   <input type="range" min={0} max={2} step={0.1} value={config.decomposition.lowGain} disabled={disabled || !config.decomposition.enabled} onChange={(event) => onDecompositionLowGainChange(Number(event.target.value))} />
-                  <output>{config.decomposition.lowGain.toFixed(1)}</output>
-                </label>
-                <label className="decomposition-gain-slider">
-                  <span>Mid gain</span>
+                </ModifierOptionRow>
+                <ModifierOptionRow label="Mid gain" unit={<output>{config.decomposition.midGain.toFixed(1)}</output>}>
                   <input type="range" min={0} max={2} step={0.1} value={config.decomposition.midGain} disabled={disabled || !config.decomposition.enabled} onChange={(event) => onDecompositionMidGainChange(Number(event.target.value))} />
-                  <output>{config.decomposition.midGain.toFixed(1)}</output>
-                </label>
-                <label className="decomposition-gain-slider">
-                  <span>Fine gain</span>
+                </ModifierOptionRow>
+                <ModifierOptionRow label="Fine gain" unit={<output>{config.decomposition.fineGain.toFixed(1)}</output>}>
                   <input type="range" min={0} max={2} step={0.1} value={config.decomposition.fineGain} disabled={disabled || !config.decomposition.enabled} onChange={(event) => onDecompositionFineGainChange(Number(event.target.value))} />
-                  <output>{config.decomposition.fineGain.toFixed(1)}</output>
-                </label>
+                </ModifierOptionRow>
               </div>
             </div>
           )}
@@ -330,7 +358,7 @@ export default function MotionStack({
         <div className="animation-fix-stack-item">
           <OperationCard
             title="3. Pose Warp"
-            summary={config.poseWarp.targetName || "Choose target pose FBX"}
+            summary={config.poseWarp.targetName || "Select a target pose"}
             enabled={config.poseWarp.enabled}
             selected={selected === "poseWarp"}
             disabled={disabled}
@@ -340,52 +368,33 @@ export default function MotionStack({
           {selected === "poseWarp" && (
             <div className="animation-fix-inline-config pose-warp-inline-config">
               <div className="pose-warp-primary">
-                <div className="pose-warp-field">
-                  <span className="pose-warp-field-label">Match</span>
-                  <div className="pose-warp-segmented" role="group" aria-label="Pose warp goal">
-                    <button
-                      type="button"
-                      className={config.poseWarp.anchor === "start" ? "is-active" : ""}
-                      disabled={disabled || !config.poseWarp.enabled}
-                      onClick={() => onPoseWarpAnchorChange("start")}
-                    >
-                      Start
-                    </button>
-                    <button
-                      type="button"
-                      className={config.poseWarp.anchor === "end" ? "is-active" : ""}
-                      disabled={disabled || !config.poseWarp.enabled}
-                      onClick={() => onPoseWarpAnchorChange("end")}
-                    >
-                      End
-                    </button>
-                  </div>
-                </div>
+                <ModifierOptionRow label="Apply pose at">
+                  <select
+                    value={config.poseWarp.anchor}
+                    disabled={disabled || !config.poseWarp.enabled}
+                    onChange={(event) =>
+                      onPoseWarpAnchorChange(event.target.value as MotionStackConfig["poseWarp"]["anchor"])
+                    }
+                  >
+                    <option value="start">Clip start</option>
+                    <option value="end">Clip end</option>
+                  </select>
+                </ModifierOptionRow>
 
-                <div className="pose-warp-field">
-                  <span className="pose-warp-field-label">Method</span>
-                  <div className="pose-warp-segmented" role="group" aria-label="Pose warp method">
-                    <button
-                      type="button"
-                      className={config.poseWarp.method === "blend" ? "is-active" : ""}
-                      disabled={disabled || !config.poseWarp.enabled}
-                      onClick={() => onPoseWarpMethodChange("blend")}
-                    >
-                      Pose Blend
-                    </button>
-                    <button
-                      type="button"
-                      className={config.poseWarp.method === "rebase" ? "is-active" : ""}
-                      disabled={disabled || !config.poseWarp.enabled}
-                      onClick={() => onPoseWarpMethodChange("rebase")}
-                    >
-                      Motion Rebase
-                    </button>
-                  </div>
-                </div>
+                <ModifierOptionRow label="Method">
+                  <select
+                    value={config.poseWarp.method}
+                    disabled={disabled || !config.poseWarp.enabled}
+                    onChange={(event) =>
+                      onPoseWarpMethodChange(event.target.value as MotionStackConfig["poseWarp"]["method"])
+                    }
+                  >
+                    <option value="blend">Pose Crossfade</option>
+                    <option value="rebase">Motion Rebase</option>
+                  </select>
+                </ModifierOptionRow>
 
-                <div className="pose-warp-field">
-                  <span className="pose-warp-field-label">Target Pose</span>
+                <ModifierOptionRow label="Target Pose" as="div">
                   <label className="pose-warp-file-picker">
                     <input
                       type="file"
@@ -400,12 +409,9 @@ export default function MotionStack({
                       {config.poseWarp.targetName ? "Change" : "Choose"}
                     </span>
                   </label>
-                </div>
+                </ModifierOptionRow>
 
-                <div className="pose-warp-field">
-                  <span className="pose-warp-field-label">
-                    {config.poseWarp.anchor === "start" ? "Blend Back" : "Blend Into Target"}
-                  </span>
+                <ModifierOptionRow label="Blend duration" as="div">
                   <div className="pose-warp-duration">
                     <NumericParameterInput
                       min={0.001}
@@ -416,7 +422,7 @@ export default function MotionStack({
                     />
                     <span>s</span>
                   </div>
-                </div>
+                </ModifierOptionRow>
 
                 <div className="pose-warp-flow" aria-label="Pose warp direction">
                   <span>{config.poseWarp.anchor === "start" ? "Target Pose" : "Original Motion"}</span>
@@ -428,8 +434,7 @@ export default function MotionStack({
               <details className="pose-warp-advanced">
                 <summary>Advanced</summary>
                 <div className="pose-warp-advanced-body">
-                  <label>
-                    <span>Target time</span>
+                  <ModifierOptionRow label="Target time">
                     <NumericParameterInput
                       min={0}
                       step={0.033}
@@ -437,29 +442,29 @@ export default function MotionStack({
                       disabled={disabled || !config.poseWarp.enabled}
                       onCommit={onPoseWarpTargetTimeChange}
                     />
-                  </label>
-                  <div className="pose-warp-region">
-                    <span>Warp region</span>
-                    <NumericParameterInput
-                      min={0}
-                      step={0.033}
-                      value={Number(config.poseWarp.warpStartTime.toFixed(3))}
-                      disabled={disabled || !config.poseWarp.enabled}
-                      onCommit={onPoseWarpStartTimeChange}
-                    />
-                    <span className="pose-warp-region-arrow">→</span>
-                    <NumericParameterInput
-                      min={0}
-                      step={0.033}
-                      value={Number(config.poseWarp.warpEndTime.toFixed(3))}
-                      disabled={disabled || !config.poseWarp.enabled}
-                      onCommit={onPoseWarpEndTimeChange}
-                    />
-                  </div>
-                  <div className="pose-warp-status">
-                    <span>Root Motion</span>
-                    <strong>Preserved</strong>
-                  </div>
+                  </ModifierOptionRow>
+                  <ModifierOptionRow label="Warp region" as="div">
+                    <div className="pose-warp-region-control">
+                      <NumericParameterInput
+                        min={0}
+                        step={0.033}
+                        value={Number(config.poseWarp.warpStartTime.toFixed(3))}
+                        disabled={disabled || !config.poseWarp.enabled}
+                        onCommit={onPoseWarpStartTimeChange}
+                      />
+                      <span className="pose-warp-region-arrow">→</span>
+                      <NumericParameterInput
+                        min={0}
+                        step={0.033}
+                        value={Number(config.poseWarp.warpEndTime.toFixed(3))}
+                        disabled={disabled || !config.poseWarp.enabled}
+                        onCommit={onPoseWarpEndTimeChange}
+                      />
+                    </div>
+                  </ModifierOptionRow>
+                  <ModifierOptionRow label="Root Motion" as="div">
+                    <strong className="modifier-option-status">Preserved</strong>
+                  </ModifierOptionRow>
                 </div>
               </details>
             </div>
@@ -477,8 +482,8 @@ export default function MotionStack({
           />
           {selected === "loopFix" && (
             <div className="animation-fix-inline-config loop-fix-inline-config">
-              <label><span>Mode</span><select value={config.loopFix.mode} disabled={disabled || !config.loopFix.enabled} onChange={(event) => onLoopModeChange(event.target.value as AnimationLoopFixMode)}><option value="cyclic">Cyclic</option><option value="inertial">Inertial</option></select></label>
-              <label><span>Root</span><select value={config.loopFix.rootPolicy} disabled={disabled || !config.loopFix.enabled} onChange={(event) => onLoopRootPolicyChange(event.target.value as AnimationLoopRootPolicy)}><option value="auto">Auto</option><option value="close">Close</option><option value="preserve">Preserve</option></select></label>
+              <ModifierOptionRow label="Mode"><select value={config.loopFix.mode} disabled={disabled || !config.loopFix.enabled} onChange={(event) => onLoopModeChange(event.target.value as AnimationLoopFixMode)}><option value="cyclic">Cyclic</option><option value="inertial">Inertial</option></select></ModifierOptionRow>
+              <ModifierOptionRow label="Root"><select value={config.loopFix.rootPolicy} disabled={disabled || !config.loopFix.enabled} onChange={(event) => onLoopRootPolicyChange(event.target.value as AnimationLoopRootPolicy)}><option value="auto">Auto</option><option value="close">Close</option><option value="preserve">Preserve</option></select></ModifierOptionRow>
             </div>
           )}
         </div>
@@ -494,94 +499,17 @@ export default function MotionStack({
           />
           {selected === "footStabilizer" && (
             <div className="animation-fix-inline-config foot-stabilizer-inline-config">
-              <label className="foot-stabilizer-row">
-                <span>Movement threshold</span>
-                <div className="foot-stabilizer-value">
-                  <NumericParameterInput
-                    min={0}
-                    step={0.01}
-                    value={config.footStabilizer.movementThreshold}
-                    disabled={disabled || !config.footStabilizer.enabled}
-                    onCommit={onFootStabilizerMovementThresholdChange}
-                  />
-                  <small>height/s</small>
-                </div>
-              </label>
-              <label className="foot-stabilizer-row">
-                <span>Ground height</span>
-                <div className="foot-stabilizer-value">
-                  <NumericParameterInput
-                    min={0}
-                    step={0.005}
-                    value={config.footStabilizer.heightThreshold}
-                    disabled={disabled || !config.footStabilizer.enabled}
-                    onCommit={onFootStabilizerHeightThresholdChange}
-                  />
-                  <small>height</small>
-                </div>
-              </label>
-              <label className="foot-stabilizer-row">
-                <span>Initial contact anchor</span>
-                <div className="foot-stabilizer-value">
-                  <NumericParameterInput
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={config.footStabilizer.initialAnchorPosition}
-                    disabled={disabled || !config.footStabilizer.enabled}
-                    onCommit={onFootStabilizerInitialAnchorPositionChange}
-                  />
-                  <small>phase</small>
-                </div>
-              </label>
-              <label className="foot-stabilizer-row">
-                <span>Middle contact anchor</span>
-                <div className="foot-stabilizer-value">
-                  <NumericParameterInput
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={config.footStabilizer.intermediateAnchorPosition}
-                    disabled={disabled || !config.footStabilizer.enabled}
-                    onCommit={onFootStabilizerIntermediateAnchorPositionChange}
-                  />
-                  <small>phase</small>
-                </div>
-              </label>
-              <label className="foot-stabilizer-row">
-                <span>Final contact anchor</span>
-                <div className="foot-stabilizer-value">
-                  <NumericParameterInput
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={config.footStabilizer.finalAnchorPosition}
-                    disabled={disabled || !config.footStabilizer.enabled}
-                    onCommit={onFootStabilizerFinalAnchorPositionChange}
-                  />
-                  <small>phase</small>
-                </div>
-              </label>
-              <label className="foot-stabilizer-row">
-                <span>Warp airborne motion</span>
-                <div className="foot-stabilizer-toggle">
-                  <input
-                    type="checkbox"
-                    checked={config.footStabilizer.warpAirborneMotion}
-                    disabled={disabled || !config.footStabilizer.enabled}
-                    onChange={(event) => onFootStabilizerWarpAirborneMotionChange(event.target.checked)}
-                  />
-                  <strong>Between contacts</strong>
-                </div>
-              </label>
-              <div className="foot-stabilizer-row">
-                <span>Viewport debug</span>
-                <strong>Faint = input path · bright = stabilized</strong>
-              </div>
-              <div className="foot-stabilizer-row">
-                <span>Root Motion</span>
-                <strong>Preserved</strong>
-              </div>
+              <ModifierOptionRow label="Movement threshold" unit="height/s"><NumericParameterInput min={0} step={0.01} value={config.footStabilizer.movementThreshold} disabled={disabled || !config.footStabilizer.enabled} onCommit={onFootStabilizerMovementThresholdChange} /></ModifierOptionRow>
+              <ModifierOptionRow label="Ground height" unit="height"><NumericParameterInput min={0} step={0.005} value={config.footStabilizer.heightThreshold} disabled={disabled || !config.footStabilizer.enabled} onCommit={onFootStabilizerHeightThresholdChange} /></ModifierOptionRow>
+              <ModifierOptionRow label="Initial contact anchor" unit="phase"><NumericParameterInput min={0} max={1} step={0.05} value={config.footStabilizer.initialAnchorPosition} disabled={disabled || !config.footStabilizer.enabled} onCommit={onFootStabilizerInitialAnchorPositionChange} /></ModifierOptionRow>
+              <ModifierOptionRow label="Middle contact anchor" unit="phase"><NumericParameterInput min={0} max={1} step={0.05} value={config.footStabilizer.intermediateAnchorPosition} disabled={disabled || !config.footStabilizer.enabled} onCommit={onFootStabilizerIntermediateAnchorPositionChange} /></ModifierOptionRow>
+              <ModifierOptionRow label="Final contact anchor" unit="phase"><NumericParameterInput min={0} max={1} step={0.05} value={config.footStabilizer.finalAnchorPosition} disabled={disabled || !config.footStabilizer.enabled} onCommit={onFootStabilizerFinalAnchorPositionChange} /></ModifierOptionRow>
+              <ModifierOptionRow label="Warp airborne motion" as="div" controlClassName="modifier-option-inline">
+                <input aria-label="Warp airborne motion" type="checkbox" checked={config.footStabilizer.warpAirborneMotion} disabled={disabled || !config.footStabilizer.enabled} onChange={(event) => onFootStabilizerWarpAirborneMotionChange(event.target.checked)} />
+                <strong className="modifier-option-status">Between contacts</strong>
+              </ModifierOptionRow>
+              <ModifierOptionRow label="Viewport debug" as="div"><strong className="modifier-option-status">Faint = input path · bright = stabilized</strong></ModifierOptionRow>
+              <ModifierOptionRow label="Root Motion" as="div"><strong className="modifier-option-status">Preserved</strong></ModifierOptionRow>
             </div>
           )}
         </div>
