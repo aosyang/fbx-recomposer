@@ -875,16 +875,30 @@ export default function App() {
       rightOutput: new THREE.LineBasicMaterial({ color: 0xffad45, transparent: true, opacity: 0.95, depthTest: false }),
     };
 
+    let footContactMarkers: Array<{
+      bone: THREE.Bone;
+      intervals: FootStabilizerReport["feet"][number]["intervals"];
+      marker: THREE.Mesh;
+    }> = [];
+
     const clearFootStabilizerDebug = () => {
+      footContactMarkers = [];
       for (const child of [...footStabilizerDebugGroup.children]) {
         footStabilizerDebugGroup.remove(child);
-        if (child instanceof THREE.Line) child.geometry.dispose();
+        if (child instanceof THREE.Line) {
+          child.geometry.dispose();
+        } else if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose());
+          else child.material.dispose();
+        }
       }
     };
 
     const updateFootStabilizerDebug = (report: FootStabilizerReport | null) => {
       clearFootStabilizerDebug();
-      if (!report) return;
+      const targetModel = model;
+      if (!report || !targetModel) return;
       report.feet.forEach((foot) => {
         const inputMaterial = foot.side === "left" ? footDebugMaterials.leftInput : footDebugMaterials.rightInput;
         const outputMaterial = foot.side === "left" ? footDebugMaterials.leftOutput : footDebugMaterials.rightOutput;
@@ -906,6 +920,35 @@ export default function App() {
             footStabilizerDebugGroup.add(line);
           }
         });
+
+        const footBone = targetModel.getObjectByName(foot.footName);
+        if (footBone instanceof THREE.Bone) {
+          const markerRadius = Math.max(report.skeletonHeight * 0.018, 0.01);
+          const marker = new THREE.Mesh(
+            new THREE.SphereGeometry(markerRadius, 16, 10),
+            new THREE.MeshBasicMaterial({
+              color: foot.side === "left" ? 0x44c7ff : 0xffad45,
+              depthTest: false,
+              depthWrite: false,
+            }),
+          );
+          marker.name = `${foot.side}-foot-contact`;
+          marker.visible = false;
+          marker.renderOrder = 102;
+          footStabilizerDebugGroup.add(marker);
+          footContactMarkers.push({ bone: footBone, intervals: foot.intervals, marker });
+        }
+      });
+    };
+
+    const updateFootContactMarkers = () => {
+      const currentTime = animationActions[0]?.time ?? mixer?.time ?? 0;
+      footContactMarkers.forEach(({ bone, intervals, marker }) => {
+        const inContact = intervals.some(
+          (interval) => currentTime >= interval.startTime - 1e-6 && currentTime <= interval.endTime + 1e-6,
+        );
+        marker.visible = inContact;
+        if (inContact) bone.getWorldPosition(marker.position);
       });
     };
     scene.background = new THREE.Color(0x101214);
@@ -2226,6 +2269,7 @@ export default function App() {
             `${(-projectedBonePosition.y * 0.5 + 0.5) * viewport.clientHeight}px`;
         }
       }
+      updateFootContactMarkers();
       footStabilizerDebugGroup.visible = selectedMotionOperationRef.current === "footStabilizer";
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(animate);
