@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { announceTopbarMenu } from "../lib/topbar-menus.js";
 
 type FileMenuProps = {
   canSave: boolean;
@@ -19,8 +20,12 @@ export default function FileMenu({
   onSaveFbx,
 }: FileMenuProps) {
   return (
-    <details className="open-model-menu">
-      <summary
+    <details
+      className="open-model-menu"
+      onToggle={(event) => {
+        if (event.currentTarget.open) announceTopbarMenu("file");
+      }}
+    >      <summary
         className="primary-button open-model-trigger"
         aria-label="File menu"
       >

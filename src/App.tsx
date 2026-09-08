@@ -3,6 +3,7 @@ import * as THREE from "three";
 import type { MotionStackConfig, MotionOperationKind } from "./components/AnimationFixStack";
 import AnimationWorkspacePanel from "./components/AnimationWorkspacePanel";
 import FileMenu from "./components/FileMenu";
+import LanManualPairing from "./components/LanManualPairing";
 import ViewportDisplayMenu, {
   type MaterialRenderMode,
 } from "./components/ViewportDisplayMenu";
@@ -2772,6 +2773,7 @@ export default function App() {
                 })
               }
             />
+            <LanManualPairing onReceiveFile={(file) => routeFbxFile(file)} />
           </div>
         </div>
         {loadState === "ready" && (

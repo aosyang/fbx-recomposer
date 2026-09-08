@@ -1565,7 +1565,8 @@ button {
   }
 
   .display-menu-trigger,
-  .file-actions > button {
+  .file-actions > button,
+  .lan-pairing-trigger {
     min-height: 34px;
     padding: 0 8px;
     font-size: 11px;
@@ -1775,6 +1776,337 @@ button {
   color: #aab3bc;
   font-size: 0.76rem;
   line-height: 1.3;
+}
+
+/* LAN browser pairing */
+.lan-pairing {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.lan-pairing-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.lan-pairing-trigger.is-open,
+.lan-pairing-trigger:hover:not(:disabled) {
+  color: #fff;
+  background: #343a40;
+}
+
+.lan-pairing-trigger .display-menu-chevron {
+  background: currentColor;
+  opacity: 0.78;
+}
+
+.lan-pairing-trigger.is-open .display-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.lan-pairing-panel {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  display: grid;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(78vh, 40rem);
+  overflow: hidden;
+  border: 1px solid #3b4249;
+  border-radius: 0.8rem;
+  background: #1a1e22;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 45%);
+}
+
+.lan-pairing-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid #30363c;
+}
+
+.lan-pairing-header h2 {
+  margin: 0;
+  color: #f6f7f8;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.lan-pairing-header p {
+  margin: 4px 0 0;
+  color: #9ea8b2;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.lan-pairing-close {
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.55rem;
+  color: #d8dde2;
+  background: #292f35;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lan-pairing-close:hover {
+  color: #fff;
+  background: #343a40;
+}
+
+.lan-pairing-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  overflow-y: auto;
+}
+
+.lan-pairing-field {
+  display: grid;
+  gap: 6px;
+}
+
+.lan-pairing-label {
+  color: #c4c8d0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.lan-pairing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.lan-pairing-actions > button,
+.lan-pairing-full {
+  flex: 1 1 auto;
+}
+
+.lan-pairing-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #333941;
+  border-radius: 8px;
+  color: #e6eaed;
+  background: #202428;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  outline: 0;
+}
+
+.lan-pairing-input:focus {
+  border-color: #465049;
+  box-shadow: inset 0 0 0 1px #465049;
+}
+
+.lan-pairing-input:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.lan-pairing-status {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #333941;
+  border-radius: 8px;
+  background: #161a1e;
+}
+
+.lan-pairing-status-badge {
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #dce1e5;
+  background: #2a2f34;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.lan-pairing-status p {
+  margin: 0;
+  color: #aeb6bd;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.lan-pairing-status.is-waiting .lan-pairing-status-badge,
+.lan-pairing-status.is-ready .lan-pairing-status-badge,
+.lan-pairing-status.is-connected .lan-pairing-status-badge {
+  color: #102017;
+  background: #7ef29a;
+}
+
+.lan-pairing-status.is-error {
+  border-color: #5a3535;
+  background: #241818;
+}
+
+.lan-pairing-status.is-error .lan-pairing-status-badge {
+  color: #fff;
+  background: #8b3a3a;
+}
+
+.lan-pairing-status.is-error p {
+  color: #e2b4b4;
+}
+
+.lan-pairing-transfer {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #333941;
+  border-radius: 8px;
+  background: #161a1e;
+}
+
+.lan-pairing-transfer-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e6eaed;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.lan-pairing-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #2a2f34;
+}
+
+.lan-pairing-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #7ef29a;
+  transition: width 120ms ease;
+}
+
+.lan-pairing-hint {
+  margin: 0;
+  color: #88919a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.lan-pairing-status-detail {
+  color: #88919a !important;
+  font-size: 11px !important;
+}
+
+.lan-pairing-home,
+.lan-pairing-create,
+.lan-pairing-enter,
+.lan-pairing-connected {
+  display: grid;
+  gap: 10px;
+}
+
+.lan-pairing-code-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #333941;
+  border-radius: 10px;
+  background: #161a1e;
+  text-align: center;
+}
+
+.lan-pairing-section-title {
+  color: #f6f7f8;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.lan-pairing-code-card .lan-pairing-label {
+  margin-top: 2px;
+}
+
+.lan-pairing-code {
+  color: #f6f7f8;
+  font-size: 1.7rem;
+  font-weight: 760;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+}
+
+.lan-pairing-qr {
+  display: block;
+  width: 196px;
+  height: 196px;
+  margin: 4px auto 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.lan-pairing-qr.is-loading {
+  background:
+    linear-gradient(90deg, #2a2f34 25%, #343a40 50%, #2a2f34 75%);
+  background-size: 200% 100%;
+  animation: lan-pairing-qr-pulse 1.1s linear infinite;
+}
+
+@keyframes lan-pairing-qr-pulse {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.lan-pairing-scanner,
+.lan-pairing-scanner-live,
+.lan-pairing-scanner-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.lan-pairing-scanner-video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid #333941;
+  border-radius: 10px;
+  background: #0d1013;
+}
+
+.lan-pairing-hint.is-error {
+  color: #e2b4b4;
+}
+
+@media (max-width: 640px) {
+  .lan-pairing-panel {
+    position: fixed;
+    top: 72px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - 88px);
+  }
+
+  .lan-pairing-actions > button {
+    flex: 1 1 calc(50% - 6px);
+  }
 }
 
 
