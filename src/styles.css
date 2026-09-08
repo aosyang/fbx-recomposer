@@ -1811,8 +1811,9 @@ button {
   z-index: 80;
   top: calc(100% + 0.5rem);
   left: 0;
+  right: auto;
   display: grid;
-  width: min(24rem, calc(100vw - 2rem));
+  width: min(24rem, calc(100vw - 24px));
   max-height: min(78vh, 40rem);
   overflow: hidden;
   border: 1px solid #3b4249;
@@ -1897,18 +1898,28 @@ button {
 
 .lan-pairing-input {
   width: 100%;
+  max-width: 100%;
   min-width: 0;
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 40px;
+  padding: 10px 12px;
   border: 1px solid #333941;
   border-radius: 8px;
   color: #e6eaed;
   background: #202428;
   font: inherit;
-  font-size: 13px;
+  /* Keep >= 16px so iOS Safari/Chrome do not auto-zoom on focus. */
+  font-size: 16px;
   font-weight: 650;
   letter-spacing: 0.04em;
   outline: 0;
+}
+
+.lan-pairing-panel input,
+.lan-pairing-panel textarea,
+.lan-pairing-panel select {
+  font-size: 16px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .lan-pairing-input:focus {
@@ -2101,7 +2112,7 @@ button {
     left: 10px;
     width: auto;
     max-width: none;
-    max-height: calc(100vh - 88px);
+    max-height: calc(100dvh - 88px);
   }
 
   .lan-pairing-actions > button {
