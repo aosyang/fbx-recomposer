@@ -149,6 +149,144 @@
   letter-spacing: -0.01em;
 }
 
+/* Shared dark-theme scrollbars (WebKit + Firefox) */
+:root {
+  --scrollbar-size: 10px;
+  --scrollbar-radius: 999px;
+  --scrollbar-track: #131a23;
+  --scrollbar-thumb: #626d7b;
+  --scrollbar-thumb-hover: #798697;
+  --scrollbar-thumb-active: #8d9aab;
+  --scrollbar-border: #131a23;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --scrollbar-size: 8px;
+  }
+}
+
+.scrollable,
+.bone-tree,
+.animation-workspace-panel,
+.animation-workspace-stack,
+.animation-workspace-diagnostics,
+.animation-fix-inspector,
+.lan-pairing-body,
+.import-dialog-body,
+.asset-model-picker-list,
+.mapping-issues ul,
+.mapping-details ul {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.scrollable {
+  overflow: auto;
+}
+
+.scrollable,
+.animation-workspace-panel,
+.animation-fix-inspector,
+.lan-pairing-body,
+.import-dialog-body,
+.asset-model-picker-list {
+  scrollbar-gutter: stable;
+}
+
+.scrollable::-webkit-scrollbar,
+.bone-tree::-webkit-scrollbar,
+.animation-workspace-panel::-webkit-scrollbar,
+.animation-workspace-stack::-webkit-scrollbar,
+.animation-workspace-diagnostics::-webkit-scrollbar,
+.animation-fix-inspector::-webkit-scrollbar,
+.lan-pairing-body::-webkit-scrollbar,
+.import-dialog-body::-webkit-scrollbar,
+.asset-model-picker-list::-webkit-scrollbar,
+.mapping-issues ul::-webkit-scrollbar,
+.mapping-details ul::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+.scrollable::-webkit-scrollbar-track,
+.bone-tree::-webkit-scrollbar-track,
+.animation-workspace-panel::-webkit-scrollbar-track,
+.animation-workspace-stack::-webkit-scrollbar-track,
+.animation-workspace-diagnostics::-webkit-scrollbar-track,
+.animation-fix-inspector::-webkit-scrollbar-track,
+.lan-pairing-body::-webkit-scrollbar-track,
+.import-dialog-body::-webkit-scrollbar-track,
+.asset-model-picker-list::-webkit-scrollbar-track,
+.mapping-issues ul::-webkit-scrollbar-track,
+.mapping-details ul::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-radius);
+}
+
+.scrollable::-webkit-scrollbar-thumb,
+.bone-tree::-webkit-scrollbar-thumb,
+.animation-workspace-panel::-webkit-scrollbar-thumb,
+.animation-workspace-stack::-webkit-scrollbar-thumb,
+.animation-workspace-diagnostics::-webkit-scrollbar-thumb,
+.animation-fix-inspector::-webkit-scrollbar-thumb,
+.lan-pairing-body::-webkit-scrollbar-thumb,
+.import-dialog-body::-webkit-scrollbar-thumb,
+.asset-model-picker-list::-webkit-scrollbar-thumb,
+.mapping-issues ul::-webkit-scrollbar-thumb,
+.mapping-details ul::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 2px solid var(--scrollbar-border);
+  border-radius: var(--scrollbar-radius);
+  background-clip: padding-box;
+}
+
+.scrollable::-webkit-scrollbar-thumb:hover,
+.bone-tree::-webkit-scrollbar-thumb:hover,
+.animation-workspace-panel::-webkit-scrollbar-thumb:hover,
+.animation-workspace-stack::-webkit-scrollbar-thumb:hover,
+.animation-workspace-diagnostics::-webkit-scrollbar-thumb:hover,
+.animation-fix-inspector::-webkit-scrollbar-thumb:hover,
+.lan-pairing-body::-webkit-scrollbar-thumb:hover,
+.import-dialog-body::-webkit-scrollbar-thumb:hover,
+.asset-model-picker-list::-webkit-scrollbar-thumb:hover,
+.mapping-issues ul::-webkit-scrollbar-thumb:hover,
+.mapping-details ul::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  border: 2px solid var(--scrollbar-border);
+  background-clip: padding-box;
+}
+
+.scrollable::-webkit-scrollbar-thumb:active,
+.bone-tree::-webkit-scrollbar-thumb:active,
+.animation-workspace-panel::-webkit-scrollbar-thumb:active,
+.animation-workspace-stack::-webkit-scrollbar-thumb:active,
+.animation-workspace-diagnostics::-webkit-scrollbar-thumb:active,
+.animation-fix-inspector::-webkit-scrollbar-thumb:active,
+.lan-pairing-body::-webkit-scrollbar-thumb:active,
+.import-dialog-body::-webkit-scrollbar-thumb:active,
+.asset-model-picker-list::-webkit-scrollbar-thumb:active,
+.mapping-issues ul::-webkit-scrollbar-thumb:active,
+.mapping-details ul::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+  border: 2px solid var(--scrollbar-border);
+  background-clip: padding-box;
+}
+
+.scrollable::-webkit-scrollbar-corner,
+.bone-tree::-webkit-scrollbar-corner,
+.animation-workspace-panel::-webkit-scrollbar-corner,
+.animation-workspace-stack::-webkit-scrollbar-corner,
+.animation-workspace-diagnostics::-webkit-scrollbar-corner,
+.animation-fix-inspector::-webkit-scrollbar-corner,
+.lan-pairing-body::-webkit-scrollbar-corner,
+.import-dialog-body::-webkit-scrollbar-corner,
+.asset-model-picker-list::-webkit-scrollbar-corner,
+.mapping-issues ul::-webkit-scrollbar-corner,
+.mapping-details ul::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1115,8 +1253,6 @@ select {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 5px 5px 10px;
-  scrollbar-color: #454c54 transparent;
-  scrollbar-width: thin;
 }
 
 .bone-search-empty {
@@ -1408,8 +1544,6 @@ select {
 .import-dialog-body {
   overflow: auto;
   padding: 16px 18px 18px;
-  scrollbar-color: #454c54 transparent;
-  scrollbar-width: thin;
 }
 
 .clip-field {
@@ -1595,7 +1729,6 @@ select {
   margin: 0;
   overflow: auto;
   list-style: none;
-  scrollbar-width: thin;
 }
 
 .mapping-issues li,
