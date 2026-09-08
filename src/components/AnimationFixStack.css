@@ -25,10 +25,10 @@
   gap: 2px;
 }
 
-.animation-fix-stack-title-row strong { font-size: 13px; }
+.animation-fix-stack-title-row strong { font-size: var(--type-section); }
 .animation-fix-stack-title-row span,
 .animation-fix-stack-card-copy span,
-.animation-fix-stack-footer span { color: #8f99a3; font-size: 11px; }
+.animation-fix-stack-footer span { color: #8f99a3; font-size: var(--type-caption); }
 
 .animation-fix-stack-list {
   display: grid;
@@ -52,7 +52,7 @@
   box-shadow: inset 3px 0 0 #9aa7b2;
 }
 .animation-fix-stack-card.is-disabled .animation-fix-stack-card-copy { opacity: .72; }
-.animation-fix-stack-card-copy strong { color: #eef2f5; font-size: 12px; }
+.animation-fix-stack-card-copy strong { color: #eef2f5; font-size: var(--type-secondary); }
 .animation-fix-stack-card-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .animation-fix-stack-toggle {
@@ -63,7 +63,7 @@
   min-width: 48px;
   justify-content: flex-end;
   color: #b8c1c8;
-  font-size: 11px;
+  font-size: var(--type-caption);
   cursor: pointer;
 }
 
@@ -135,7 +135,7 @@
 }
 .root-motion-axis-toggle > span {
   color: #8f99a3;
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 .modifier-option-row {
   display: grid;
@@ -147,7 +147,7 @@
 }
 .modifier-option-label {
   color: #8f99a3;
-  font-size: 11px;
+  font-size: var(--type-caption);
   white-space: nowrap;
 }
 .modifier-option-control {
@@ -163,7 +163,7 @@
 .modifier-option-unit {
   grid-column: 3 / 4;
   color: #7f8a93;
-  font-size: 10px;
+  font-size: var(--type-micro);
   white-space: nowrap;
 }
 .modifier-option-inline {
@@ -171,7 +171,7 @@
 }
 .modifier-option-status {
   color: #c7d0d7;
-  font-size: 11px;
+  font-size: var(--type-caption);
   font-weight: 500;
 }
 .animation-fix-inline-config select,
@@ -223,11 +223,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #dce3e8 !important;
-  font-size: 12px !important;
+  font-size: var(--type-secondary) !important;
 }
 .pose-warp-file-action {
   color: #9fb1bf !important;
-  font-size: 11px !important;
+  font-size: var(--type-caption) !important;
 }
 .pose-warp-duration {
   display: grid;
@@ -237,7 +237,7 @@
 }
 .pose-warp-duration > span {
   color: #8f99a3;
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 .pose-warp-flow {
   display: flex;
@@ -249,7 +249,7 @@
   border-radius: 5px;
   background: #12171b;
   color: #9ba6ae;
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 .pose-warp-flow-arrow {
   color: #d7dee3;
@@ -261,7 +261,7 @@
 }
 .pose-warp-advanced summary {
   color: #9da8b1;
-  font-size: 11px;
+  font-size: var(--type-caption);
   cursor: pointer;
   user-select: none;
 }
@@ -279,7 +279,7 @@
 }
 .pose-warp-region-arrow {
   color: #6f7b84;
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 .decomposition-gain-sliders {
   display: grid;
@@ -294,7 +294,7 @@
 }
 .modifier-option-unit output {
   color: #c7d0d7;
-  font-size: 11px;
+  font-size: var(--type-caption);
   font-variant-numeric: tabular-nums;
   text-align: left;
 }

@@ -394,8 +394,8 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
         >
           <div className="lan-pairing-header">
             <div>
-              <h2>LAN Transfer</h2>
-              <p>Send FBX files to another device on the same network.</p>
+              <h2 className="typo-title">LAN Transfer</h2>
+              <p className="typo-secondary">Send FBX files to another device on the same network.</p>
             </div>
             <button
               type="button"
@@ -449,11 +449,11 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
             {uiMode === "create" && phase !== "connected" ? (
               <div className="lan-pairing-create">
                 <div className="lan-pairing-code-card">
-                  <strong className="lan-pairing-section-title">Pair another device</strong>
-                  <span className="lan-pairing-label">Pairing code</span>
-                  <strong className="lan-pairing-code">{pairingId}</strong>
+                  <strong className="lan-pairing-section-title typo-section">Pair another device</strong>
+                  <span className="lan-pairing-label typo-section">Pairing code</span>
+                  <strong className="lan-pairing-code typo-code">{pairingId}</strong>
                   <LanPairingQrCode code={pairingId} />
-                  <p className="lan-pairing-hint">
+                  <p className="lan-pairing-hint typo-secondary">
                     On the other device, open LAN Transfer and scan this QR code or enter the pairing code.
                   </p>
                   <div className="lan-pairing-actions">

@@ -15,7 +15,10 @@
   color: #929ca5;
   padding: 5px 10px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--type-control);
+  font-weight: var(--weight-emphasis);
+  min-height: var(--control-height);
+  line-height: var(--leading-tight);
   cursor: pointer;
 }
 
@@ -78,14 +81,14 @@
 .animation-workspace-heading h2,
 .animation-workspace-diagnostics h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--type-section);
 }
 
 .animation-workspace-heading span {
   display: block;
   margin-top: 3px;
   color: #8f99a3;
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .animation-workspace-stack {
@@ -202,7 +205,7 @@
   }
 
   .animation-workspace-heading h2 {
-    font-size: 15px;
+    font-size: var(--type-section);
   }
 
   .animation-workspace-stack {
@@ -264,14 +267,14 @@
 
 .animation-workspace-diagnostics .animation-analysis dt {
   color: #7f8b96;
-  font-size: 10px;
+  font-size: var(--type-micro);
 }
 
 .animation-workspace-diagnostics .animation-analysis dd {
   margin: 4px 0 0;
   overflow: hidden;
   color: #eef2f5;
-  font-size: 11px;
+  font-size: var(--type-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -315,9 +318,10 @@
   .workspace-switcher button {
     flex: 1 1 0;
     min-width: 0;
-    min-height: 44px;
+    min-height: var(--control-height);
     padding: 6px 8px;
-    line-height: 1.15;
+    font-size: var(--type-control);
+    line-height: 1.2;
     white-space: normal;
   }
 
@@ -440,7 +444,7 @@
   }
 
   .workspace-switcher button {
-    font-size: 11px;
+    font-size: var(--type-control);
   }
 
   .animation-workspace-diagnostics .animation-analysis {
@@ -536,19 +540,20 @@
   .open-model-trigger,
   .lan-pairing-trigger {
     min-width: 0;
-    min-height: 34px;
-    padding: 0 10px;
-    font-size: 12px;
+    min-height: var(--control-height);
+    padding: 0 12px;
+    font-size: var(--type-control);
   }
 
   .workspace-switcher {
-    min-height: 44px;
+    min-height: var(--control-height);
   }
 
   .workspace-switcher button {
-    min-height: 40px;
-    padding-top: 5px;
-    padding-bottom: 5px;
+    min-height: var(--control-height);
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: var(--type-control);
   }
 
   .workspace-label-desktop {
@@ -622,8 +627,8 @@
   padding-bottom: 10px;
   border-bottom: 1px solid #30373d;
 }
-.animation-fix-inspector-heading h3 { margin: 0; font-size: 13px; }
-.animation-fix-inspector-heading span { color: #8f99a3; font-size: 11px; }
+.animation-fix-inspector-heading h3 { margin: 0; font-size: var(--type-section); }
+.animation-fix-inspector-heading span { color: #8f99a3; font-size: var(--type-caption); }
 
 .animation-fix-inspector-fields {
   display: grid;
@@ -631,7 +636,7 @@
   margin-top: 14px;
 }
 .animation-fix-inspector-fields label { display: grid; gap: 6px; }
-.animation-fix-inspector-fields label > span { color: #9ca6ae; font-size: 11px; }
+.animation-fix-inspector-fields label > span { color: #9ca6ae; font-size: var(--type-caption); }
 .animation-fix-inspector-fields select,
 .animation-fix-inspector-fields input {
   min-height: 34px;
@@ -643,7 +648,7 @@
   color: #e9eef1;
   padding: 6px 8px;
 }
-.animation-fix-inspector-fields p { margin: 2px 0 0; color: #7f8b94; font-size: 11px; line-height: 1.5; }
+.animation-fix-inspector-fields p { margin: 2px 0 0; color: #7f8b94; font-size: var(--type-caption); line-height: 1.5; }
 
 @media (max-width: 900px) {
   .workspace-animation .animation-fix-inspector { margin: 10px; }
@@ -660,7 +665,7 @@
 
 .animation-diagnostics-heading > span {
   color: #8f99a3;
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .root-motion-analysis {
@@ -675,7 +680,7 @@
   gap: 8px;
   min-width: 0;
   color: #8f99a3;
-  font-size: 10px;
+  font-size: var(--type-micro);
 }
 
 .root-motion-analysis-summary > span {
@@ -705,13 +710,13 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 3px;
-  font-size: 10px;
+  font-size: var(--type-micro);
 }
 
 .root-motion-chart-legend {
   display: flex;
   gap: 9px;
-  font-size: 9px;
+  font-size: var(--type-micro);
 }
 
 .root-motion-chart-legend span::before {
@@ -746,11 +751,11 @@
 .chart-grid-line { stroke: #374047; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart-zero-line { stroke: #56616a; stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
 .chart-axis-label,
-.chart-value-label { fill: #78838d; font-size: 9px; }
+.chart-value-label { fill: #78838d; font-size: var(--type-micro); }
 
 .root-motion-analysis-note {
   color: #74808a;
-  font-size: 9px;
+  font-size: var(--type-micro);
 }
 
 @media (min-width: 901px) {
@@ -772,7 +777,7 @@
 .foot-analysis { display: grid; gap: 12px; margin-top: 10px; }
 .foot-analysis-side { display: grid; gap: 8px; }
 .foot-analysis-side + .foot-analysis-side { padding-top: 2px; border-top: 1px solid #2d343a; }
-.foot-analysis-side-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #c7d0d7; font-size: 10px; }
+.foot-analysis-side-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #c7d0d7; font-size: var(--type-micro); }
 .foot-analysis-side-heading > span { min-width: 0; overflow: hidden; color: #818c95; text-overflow: ellipsis; white-space: nowrap; }
 .foot-analysis-chart { height: 112px; }
 .foot-analysis-series { fill: none; stroke: #78b7ff; stroke-width: 2; vector-effect: non-scaling-stroke; }
@@ -781,7 +786,7 @@
 .foot-analysis-legend .foot-value { color: #78b7ff; }
 .foot-analysis-legend .foot-threshold { color: #f0b56a; }
 .foot-analysis-legend .foot-contact { color: #64c987; }
-.chart-unit-label { fill: #78838d; font-size: 8px; }
+.chart-unit-label { fill: #78838d; font-size: var(--type-micro); }
 @media (max-width: 640px) {
   .foot-analysis-side-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
   .foot-analysis-chart { height: 108px; }
@@ -824,13 +829,14 @@
   .animation-mobile-pane-switcher button {
     flex: 1 1 0;
     min-width: 0;
-    min-height: 44px;
+    min-height: var(--control-height);
     border: 0;
     border-radius: 5px;
     background: transparent;
     color: #929ca5;
     font: inherit;
-    font-size: 12px;
+    font-size: var(--type-control);
+    font-weight: 650;
   }
 
   .animation-mobile-pane-switcher button.is-active {
