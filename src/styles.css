@@ -44,16 +44,17 @@
    */
   --type-title: 16px;
   --type-section: 13px;
-  --type-body: 13px;
-  --type-control: 13px;
-  --type-secondary: 12px;
-  --type-caption: 11px;
+  --type-body: 14px;
+  --type-control: 14px;
+  --type-secondary: 13px;
+  --type-caption: 12px;
   --type-micro: 9px;
   --type-code: 28px;
   --type-brand: 15px;
 
-  --weight-regular: 500;
-  --weight-emphasis: 650;
+  --weight-regular: 400;
+  --weight-ui: 500;
+  --weight-emphasis: 600;
   --weight-strong: 700;
 
   --leading-tight: 1.2;
@@ -61,8 +62,8 @@
   --leading-relaxed: 1.5;
 
   --control-height: 36px;
-  --row-height: 24px;
-  --shell-top: 64px;
+  --row-height: 30px;
+  --shell-top: 56px;
 
   /* Back-compat aliases used by older selectors */
   --type-heading: var(--type-title);
@@ -71,18 +72,21 @@
 
 @media (max-width: 640px) {
   :root {
-    --type-title: 20px;
-    --type-section: 15px;
+    --type-title: 18px;
+    --type-section: 14px;
     --type-body: 16px;
-    --type-control: 16px;
-    --type-secondary: 15px;
-    --type-caption: 13px;
+    --type-control: 15px;
+    --type-secondary: 14px;
+    --type-caption: 12px;
     --type-micro: 10px;
-    --type-code: 40px;
-    --type-brand: 16px;
-    --control-height: 44px;
-    --row-height: 36px;
-    --shell-top: 72px;
+    --type-code: 36px;
+    --type-brand: 15px;
+    --control-height: 40px;
+    --row-height: 34px;
+    --shell-top: 56px;
+    --weight-regular: 400;
+    --weight-ui: 600;
+    --weight-emphasis: 600;
   }
 }
 
@@ -109,7 +113,7 @@
 
 .typo-control {
   font-size: var(--type-control);
-  font-weight: var(--weight-emphasis);
+  font-weight: var(--weight-ui);
   line-height: var(--leading-tight);
 }
 
@@ -185,10 +189,10 @@ select {
 .topbar {
   z-index: 10;
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 22px;
+  padding: 0 20px;
   border-bottom: 1px solid #292d32;
   background: rgba(16, 18, 20, 0.94);
 }
@@ -201,7 +205,7 @@ select {
 
 .topbar-left {
   min-width: 0;
-  gap: 18px;
+  gap: 12px;
 }
 
 .file-actions {
@@ -255,7 +259,7 @@ select {
   border-radius: 8px;
   cursor: pointer;
   font-size: var(--type-control);
-  font-weight: var(--weight-emphasis);
+  font-weight: var(--weight-ui);
   line-height: var(--leading-tight);
 }
 
@@ -646,6 +650,7 @@ select {
   gap: 8px;
   align-items: center;
   border-radius: 10px;
+  font-weight: var(--weight-ui);
 }
 
 .file-pill span:last-child {
@@ -677,10 +682,11 @@ select {
   bottom: 66px;
   left: 18px;
   display: grid;
-  min-height: 52px;
-  padding: 9px 12px;
-  grid-template-columns: auto minmax(120px, 190px) minmax(0, 1fr);
-  gap: 12px;
+  min-height: 56px;
+  padding: 8px 12px;
+  grid-template-columns: auto minmax(140px, 0.9fr) auto minmax(180px, 1.5fr);
+  grid-template-areas: "transport meta preview scrubber";
+  gap: 12px 14px;
   align-items: center;
   border: 1px solid #343940;
   border-radius: 10px;
@@ -690,6 +696,7 @@ select {
 }
 
 .timeline-transport {
+  grid-area: transport;
   display: grid;
   grid-template-columns: repeat(3, var(--control-height));
   gap: 6px;
@@ -707,16 +714,24 @@ select {
   border-radius: 8px;
   cursor: pointer;
   font-size: var(--type-caption);
-  font-weight: 720;
+  font-weight: var(--weight-ui);
 }
 
 .timeline-play {
-  color: #102017;
-  background: #7ef29a;
+  color: #dce1e5;
+  background: #2a2f34;
+  border: 1px solid #3a4249;
 }
 
 .timeline-play:hover {
-  background: #94f7ab;
+  color: #fff;
+  background: #343a40;
+}
+
+.timeline-play.is-playing {
+  color: #c9ffd6;
+  border-color: rgba(126, 242, 154, 0.45);
+  background: rgba(126, 242, 154, 0.12);
 }
 
 .timeline-play-icon {
@@ -766,40 +781,49 @@ select {
 }
 
 .timeline-meta {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
+  display: contents;
 }
 
 .timeline-meta-copy {
-  display: grid;
+  grid-area: meta;
+  display: flex;
   min-width: 0;
-  gap: 3px;
+  align-items: baseline;
+  gap: 10px;
 }
 
 .timeline-meta-copy > span {
   overflow: hidden;
   color: #eef2f3;
   font-size: var(--type-secondary);
+  font-weight: var(--weight-ui);
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.timeline-meta-copy > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .timeline-meta-copy > span:last-child {
+  flex: 0 0 auto;
   color: #98a1a9;
   font-size: var(--type-caption);
+  font-weight: var(--weight-regular);
 }
 
 .timeline-preview-option {
+  grid-area: preview;
   display: inline-flex;
   gap: 5px;
   align-items: center;
+  justify-self: start;
   color: #aeb6bc;
   cursor: pointer;
   font-size: var(--type-caption);
+  font-weight: var(--weight-regular);
   white-space: nowrap;
 }
 
@@ -816,9 +840,11 @@ select {
 }
 
 .timeline-scrubber {
+  grid-area: scrubber;
   position: relative;
   min-width: 0;
-  height: 32px;
+  width: 100%;
+  height: 28px;
   cursor: crosshair;
   touch-action: none;
 }
@@ -834,7 +860,7 @@ select {
   top: 50%;
   right: 0;
   left: 0;
-  height: 6px;
+  height: 4px;
   transform: translateY(-50%);
   overflow: hidden;
   border: 1px solid #59616a;
@@ -852,8 +878,8 @@ select {
 .timeline-thumb {
   position: absolute;
   top: 50%;
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
   transform: translate(-50%, -50%);
   border: 2px solid #102017;
   border-radius: 50%;
@@ -911,8 +937,8 @@ select {
 
 .bone-panel-header {
   display: flex;
-  min-height: calc(var(--control-height) + 14px);
-  padding: 9px 9px 8px 12px;
+  min-height: calc(var(--control-height) + 8px);
+  padding: 8px 9px 7px 12px;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #30353a;
@@ -1058,7 +1084,7 @@ select {
 }
 
 .bone-panel-actions button {
-  min-height: calc(var(--control-height) - 10px);
+  min-height: 34px;
   padding: 0 6px;
   border: 1px solid #363c42;
   border-radius: 7px;
@@ -1066,7 +1092,7 @@ select {
   background: #252a2f;
   cursor: pointer;
   font-size: var(--type-caption);
-  font-weight: 620;
+  font-weight: var(--weight-ui);
 }
 
 .bone-panel-actions button:hover {
@@ -1127,6 +1153,7 @@ select {
   border-radius: 6px;
   color: #bdc4ca;
   font-size: var(--type-caption);
+  font-weight: var(--weight-regular);
 }
 
 .bone-row:hover {
@@ -1738,14 +1765,47 @@ select {
     right: 10px;
     bottom: 54px;
     left: 10px;
-    min-height: 92px;
-    padding: 9px;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
+    min-height: 0;
+    padding: 6px 10px 8px;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "meta meta meta"
+      "transport preview ."
+      "scrubber scrubber scrubber";
+    gap: 5px 12px;
+  }
+
+  .timeline-meta-copy {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .timeline-meta-copy > span:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .timeline-meta-copy > span:last-child {
+    flex: 0 0 auto;
+  }
+
+  .timeline-transport {
+    gap: 6px;
+  }
+
+  .timeline-preview-option {
+    justify-self: start;
+    align-self: center;
   }
 
   .timeline-scrubber {
     grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    height: 24px;
   }
 
   .viewer.has-panel {
@@ -1834,8 +1894,15 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 0.38rem;
+  border: 1px solid transparent;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.open-model-menu[open] .open-model-trigger {
+  color: #c9ffd6;
+  border-color: rgba(126, 242, 154, 0.42);
+  background: rgba(126, 242, 154, 0.12);
 }
 
 .open-model-trigger .display-menu-chevron {
@@ -2253,12 +2320,12 @@ select {
 @media (max-width: 640px) {
   .lan-pairing-panel {
     position: fixed;
-    top: 72px;
+    top: 96px;
     right: 10px;
     left: 10px;
     width: auto;
     max-width: none;
-    max-height: calc(100dvh - 88px);
+    max-height: calc(100dvh - 112px);
   }
 
   .lan-pairing-actions > button {
@@ -2382,7 +2449,7 @@ select {
 
 /* Reserve renderer height for the timeline so framing and orbiting use only unobscured canvas space. */
 .viewport-stage.has-timeline .viewport {
-  bottom: 132px;
+  bottom: 88px;
 }
 
 .timeline-control {
@@ -2393,7 +2460,7 @@ select {
   /* The Open menu is viewport-bound on phones rather than anchored past the right edge of Open. */
   .open-model-menu-panel {
     position: fixed;
-    top: 72px;
+    top: 96px;
     right: 10px;
     left: 10px;
     width: auto;
@@ -2418,10 +2485,23 @@ select {
   }
 
   .file-pill {
-    top: 10px;
+    top: 8px;
     bottom: auto;
-    left: 10px;
-    max-width: calc(100% - 112px);
+    left: 8px;
+    height: 36px;
+    max-width: calc(100% - 104px);
+    font-weight: 500;
+  }
+
+  .viewport-tools {
+    top: 8px;
+    right: 8px;
+    gap: 5px;
+  }
+
+  .hierarchy-reopen,
+  .frame-view {
+    height: 36px;
   }
 
   .timeline-control {
@@ -2431,7 +2511,7 @@ select {
   }
 
   .viewport-stage.has-timeline .viewport {
-    bottom: 122px;
+    bottom: 104px;
   }
 }
 

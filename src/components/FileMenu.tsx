@@ -26,7 +26,7 @@ export default function FileMenu({
         if (event.currentTarget.open) announceTopbarMenu("file");
       }}
     >      <summary
-        className="primary-button open-model-trigger"
+        className="secondary-button open-model-trigger"
         aria-label="File menu"
       >
         File

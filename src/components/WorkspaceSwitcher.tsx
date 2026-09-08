@@ -22,8 +22,7 @@ export default function WorkspaceSwitcher({ value, onChange }: WorkspaceSwitcher
         aria-pressed={value === "animation"}
         onClick={() => onChange("animation")}
       >
-        <span className="workspace-label-desktop">Animation Workshop</span>
-        <span className="workspace-label-mobile">Animation</span>
+        Tools
       </button>
     </div>
   );

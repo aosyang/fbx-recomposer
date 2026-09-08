@@ -721,7 +721,7 @@ export default function App() {
   const [boneHierarchy, setBoneHierarchy] = useState<BoneNode[]>([]);
   const [boneCount, setBoneCount] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(260);
+  const [panelWidth, setPanelWidth] = useState(310);
   const [animationToolsWidth, setAnimationToolsWidth] = useState<number | null>(null);
   const [boneSearch, setBoneSearch] = useState("");
   const [treeCommand, setTreeCommand] = useState<TreeCommand | null>(null);
@@ -1175,7 +1175,10 @@ export default function App() {
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       const radius = Math.max(size.length() * 0.5, 0.1);
-      const distance = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2));
+      // Phone viewports need a tighter frame so the character fills more of the canvas.
+      const framingFill = window.matchMedia("(max-width: 640px)").matches ? 1.5 : 1.4;
+      const distance =
+        radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) / framingFill;
       const viewDirection = camera.position.clone().sub(controls.target);
       if (viewDirection.lengthSq() < 0.000001) {
         viewDirection.set(0.7, 0.45, 1);
@@ -2649,9 +2652,9 @@ export default function App() {
       const viewer = event.currentTarget.parentElement;
       if (!resize || !viewer) return;
 
-      const maxWidth = Math.max(180, viewer.getBoundingClientRect().width * 0.6);
+      const maxWidth = Math.min(420, Math.max(260, viewer.getBoundingClientRect().width * 0.6));
       const nextWidth = resize.startWidth + resize.startX - event.clientX;
-      setPanelWidth(Math.round(Math.min(maxWidth, Math.max(180, nextWidth))));
+      setPanelWidth(Math.round(Math.min(maxWidth, Math.max(260, nextWidth))));
     },
     [],
   );
@@ -2924,7 +2927,7 @@ export default function App() {
           <div
             className="animation-workspace-main-resizer"
             role="separator"
-            aria-label="Resize Animation Workshop and preview panels"
+            aria-label="Resize Tools and preview panels"
             aria-orientation="vertical"
             aria-valuemin={320}
             aria-valuenow={animationToolsWidth ?? undefined}
@@ -2991,6 +2994,15 @@ export default function App() {
               </div>
               {animationTimeline && (
                 <div className="timeline-control" aria-label="Animation timeline">
+                  <div className="timeline-meta-copy">
+                    <span title={animationTimeline.clipName}>
+                      {animationTimeline.clipName}
+                    </span>
+                    <span>
+                      {formatAnimationTime(animationTimeline.time)} /{" "}
+                      {formatAnimationTime(animationTimeline.duration)}
+                    </span>
+                  </div>
                   <div className="timeline-transport">
                     <button
                       className="timeline-step timeline-step-back"
@@ -3002,7 +3014,9 @@ export default function App() {
                       <span className="timeline-step-icon" aria-hidden="true" />
                     </button>
                     <button
-                      className="timeline-play"
+                      className={`timeline-play${
+                        animationTimeline.isPlaying ? " is-playing" : ""
+                      }`}
                       type="button"
                       aria-label={
                         animationTimeline.isPlaying
@@ -3032,28 +3046,17 @@ export default function App() {
                       <span className="timeline-step-icon" aria-hidden="true" />
                     </button>
                   </div>
-                  <div className="timeline-meta">
-                    <div className="timeline-meta-copy">
-                      <span title={animationTimeline.clipName}>
-                        {animationTimeline.clipName}
-                      </span>
-                      <span>
-                        {formatAnimationTime(animationTimeline.time)} /{" "}
-                        {formatAnimationTime(animationTimeline.duration)}
-                      </span>
-                    </div>
-                    <label
-                      className="timeline-preview-option"
-                      title="Strip root translation and rotation during preview only"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={stripRootMotionPreview}
-                        onChange={toggleStripRootMotionPreview}
-                      />
-                      <span>In-place</span>
-                    </label>
-                  </div>
+                  <label
+                    className="timeline-preview-option"
+                    title="Strip root translation and rotation during preview only"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={stripRootMotionPreview}
+                      onChange={toggleStripRootMotionPreview}
+                    />
+                    <span>In-place</span>
+                  </label>
                   <div
                     id="animation-timeline"
                     className="timeline-scrubber"
@@ -3135,7 +3138,8 @@ export default function App() {
               role="separator"
               aria-label="Resize bone hierarchy panel"
               aria-orientation="vertical"
-              aria-valuemin={180}
+              aria-valuemin={260}
+              aria-valuemax={420}
               aria-valuenow={panelWidth}
               tabIndex={0}
               onPointerDown={startPanelResize}
@@ -3153,11 +3157,11 @@ export default function App() {
                 const viewerWidth =
                   event.currentTarget.parentElement?.getBoundingClientRect()
                     .width ?? window.innerWidth;
-                const maxWidth = Math.max(180, viewerWidth * 0.6);
+                const maxWidth = Math.min(420, Math.max(260, viewerWidth * 0.6));
                 const delta = event.key === "ArrowLeft" ? 16 : -16;
                 setPanelWidth((current) =>
                   Math.round(
-                    Math.min(maxWidth, Math.max(180, current + delta)),
+                    Math.min(maxWidth, Math.max(260, current + delta)),
                   ),
                 );
                 event.preventDefault();

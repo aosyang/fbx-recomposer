@@ -8,7 +8,7 @@ Your FBX files stay on your device. All processing happens locally in the browse
 
 ## Features
 
-### Animation Workshop
+### Tools
 
 Process animation with a modifier-based workflow and preview the result directly on the character.
 
