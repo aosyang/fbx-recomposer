@@ -12,13 +12,19 @@ Your FBX files stay on your device. All processing happens locally in the browse
 
 Process animation with a modifier-based workflow and preview the result directly on the character.
 
-- **Root Motion Extraction** — extract character movement into root motion.
-- **Motion Decomposition** — separate motion into adjustable components.
-- **Loop Repair** — detect and repair discontinuities at animation loop boundaries.
+- **Root Motion Extraction**: extract character movement into root motion.
+- **Motion Decomposition**: separate motion into adjustable components.
+- **Pose Warp**: blend or rebase toward a target pose over a time range.
+- **Loop Repair**: detect and repair discontinuities at animation loop boundaries.
+- **Foot Stabilizer**: reduce foot sliding with contact-aware stabilization.
 
 ### Animation Retargeting
 
 Import animation from another FBX and retarget compatible motion onto the loaded character.
+
+### LAN Transfer
+
+Send an FBX between browsers on the same local network via pairing code or QR, without uploading to the cloud.
 
 ### FBX Export
 
