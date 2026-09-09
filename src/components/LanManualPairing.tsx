@@ -271,18 +271,14 @@ export default function LanManualPairing({
     const normalized = normalizeLanPairingCode(code);
     if (role === "joiner" && !isValidLanPairingCode(normalized)) {
       setPhase("error");
-      setStatus("That pairing code is not valid.");
+      setStatus("That pairing code is not valid. Generate a new code to try again.");
       return;
     }
     setPairingId(normalized);
     setMethodTab("code");
     setScreen(role === "host" ? "code-host" : "scan-join");
     setPhase(role === "host" ? "waiting" : "connecting");
-    setStatus(
-      role === "host"
-        ? "Waiting for the other device. They should tap Scan to join."
-        : `Connecting with code ${normalized}…`,
-    );
+    setStatus(role === "host" ? "Waiting for another device" : "Connecting…");
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -302,13 +298,17 @@ export default function LanManualPairing({
       }
       installTransferController(session.channel);
       session.channel.addEventListener("close", () => {
-        if (!controller.signal.aborted) resetToTabs("Connection closed.");
+        if (!controller.signal.aborted) resetToTabs("Not connected");
       }, { once: true });
       markConnected(remoteMeta?.deviceName);
     } catch (error) {
       if (controller.signal.aborted) return;
       setPhase("error");
-      setStatus(error instanceof Error ? error.message : String(error));
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Make sure both devices are on the same local network, then try again.",
+      );
     }
   };
 
@@ -527,16 +527,13 @@ export default function LanManualPairing({
     }
   };
 
-  const headline = useMemo(() => {
-    if (connected) return peerName ? `Connected to ${peerName}` : "Connected";
+  const statusBadge = useMemo(() => {
+    if (connected) return "Connected";
     if (phase === "error") return "Connection failed";
-    if (screen === "code-host") return "Show this pairing code";
-    if (screen === "cloudless-show") return "Show this QR";
-    if (screen === "cloudless-scan-reply") return "Scan their QR";
-    if (screen === "cloudless-show-reply") return "Show this QR";
-    if (screen === "scan-join") return "Scan to join";
+    if (phase === "waiting") return "Waiting for another device";
+    if (phase === "connecting") return "Connecting…";
     return "Not connected";
-  }, [connected, peerName, phase, screen]);
+  }, [connected, phase]);
 
   const characterLabel = shortName(characterFileName, "character");
   const animationLabel = shortName(animationFileName || characterFileName, "animation");
@@ -564,7 +561,7 @@ export default function LanManualPairing({
             <div>
               <h2 className="typo-title">LAN Transfer</h2>
               <p className="typo-secondary">
-                Same Wi-Fi. Create/show a pairing code on one device; the other taps Scan to join.
+                Connect another device on the same local network.
               </p>
             </div>
             <button
@@ -579,11 +576,11 @@ export default function LanManualPairing({
 
           <div className="lan-pairing-body">
             <div className={`lan-pairing-status is-${phase}${busy ? " is-ready" : ""}`}>
-              <span className="lan-pairing-status-badge">
-                {connected ? "Connected" : phase === "error" ? "Failed" : busy ? "Working" : "Idle"}
-              </span>
-              <p>{headline}</p>
-              {status !== headline ? <p className="lan-pairing-status-detail">{status}</p> : null}
+              <span className="lan-pairing-status-badge">{statusBadge}</span>
+              {connected && peerName ? <p>{`Connected to ${peerName}`}</p> : null}
+              {!connected && status !== statusBadge ? (
+                <p className="lan-pairing-status-detail">{status}</p>
+              ) : null}
             </div>
 
             {showTabsChrome ? (
@@ -623,11 +620,11 @@ export default function LanManualPairing({
               <div className="lan-pairing-tab-panel">
                 {screen === "code-host" ? (
                   <div className="lan-pairing-code-card">
-                    <strong className="lan-pairing-section-title typo-section">Show this code</strong>
+                    <strong className="lan-pairing-section-title typo-section">Show this pairing code</strong>
                     <strong className="lan-pairing-code typo-code">{pairingId}</strong>
                     <LanPairingQrCode code={pairingId} />
                     <p className="lan-pairing-hint typo-secondary">
-                      On the other device, open LAN and tap Scan to join. They do not need to switch tabs.
+                      On the other device, scan or enter this code.
                     </p>
                     <button
                       type="button"
@@ -644,7 +641,7 @@ export default function LanManualPairing({
                         void connectPeerjs("host", makeLanPairingId());
                       }}
                     >
-                      New code
+                      Generate new code
                     </button>
                     <button
                       type="button"
@@ -656,37 +653,56 @@ export default function LanManualPairing({
                   </div>
                 ) : (
                   <>
-                    <p className="lan-pairing-hint typo-secondary">
-                      Uses a short code (cloud signaling only helps you find each other; FBX stays P2P on the same Wi-Fi).
-                    </p>
                     <button
                       type="button"
                       className="primary-button lan-pairing-full"
                       disabled={busy}
                       onClick={() => void connectPeerjs("host", makeLanPairingId())}
                     >
-                      Create and show code
+                      Create pairing code
                     </button>
-                    <label className="lan-pairing-field">
-                      <span className="lan-pairing-label">Or type a code (no camera)</span>
-                      <input
-                        className="lan-pairing-input"
-                        value={manualCode}
-                        onChange={(event) => setManualCode(event.target.value.toUpperCase())}
+
+                    <div className="lan-pairing-connect-block">
+                      <strong className="lan-pairing-section-title typo-section">Connect to another device</strong>
+                      <button
+                        type="button"
+                        className="secondary-button lan-pairing-full"
                         disabled={busy}
-                        placeholder="e.g. 5F1AF5"
-                        spellCheck={false}
-                        autoCapitalize="characters"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="secondary-button lan-pairing-full"
-                      disabled={busy || !manualCode.trim()}
-                      onClick={() => void connectPeerjs("joiner", manualCode)}
-                    >
-                      Connect with typed code
-                    </button>
+                        onClick={() => {
+                          setPastePayload("");
+                          setManualCode("");
+                          setScreen("scan-join");
+                          setPhase("idle");
+                          setStatus("Not connected");
+                        }}
+                      >
+                        Scan pairing code
+                      </button>
+                      <label className="lan-pairing-field">
+                        <span className="lan-pairing-label">or enter a pairing code</span>
+                        <input
+                          className="lan-pairing-input"
+                          value={manualCode}
+                          onChange={(event) => setManualCode(event.target.value.toUpperCase())}
+                          disabled={busy}
+                          placeholder="e.g. 95A542"
+                          spellCheck={false}
+                          autoCapitalize="characters"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-button lan-pairing-full"
+                        disabled={busy || !manualCode.trim()}
+                        onClick={() => void connectPeerjs("joiner", manualCode)}
+                      >
+                        Connect
+                      </button>
+                    </div>
+
+                    <p className="lan-pairing-hint typo-secondary">
+                      FBX files transfer directly between devices.
+                    </p>
                   </>
                 )}
               </div>
@@ -775,7 +791,7 @@ export default function LanManualPairing({
                     disabled={!pastePayload.trim()}
                     onClick={() => void submitRemoteSignalPayload(pastePayload)}
                   >
-                    Submit
+                    Connect
                   </button>
                   <button
                     type="button"
@@ -824,11 +840,9 @@ export default function LanManualPairing({
 
             {!connected && screen === "scan-join" ? (
               <div className="lan-pairing-signal-scan">
-                <strong className="lan-pairing-section-title typo-section">Scan to join</strong>
+                <strong className="lan-pairing-section-title typo-section">Scan to connect</strong>
                 <p className="lan-pairing-hint typo-secondary">
-                  {ENABLE_OFFLINE_QR
-                    ? "Point at the QR on the other device. Short codes and offline QRs are detected automatically."
-                    : "Scan the pairing-code QR on the other device, or type the short code below."}
+                  Scan the pairing code shown on the other device.
                 </p>
                 <LanPairingQrScanner
                   mode={ENABLE_OFFLINE_QR ? "auto" : "code"}
@@ -837,17 +851,15 @@ export default function LanManualPairing({
                   }}
                 />
                 <label className="lan-pairing-field">
-                  <span className="lan-pairing-label">
-                    {ENABLE_OFFLINE_QR
-                      ? "Or paste QR text / type a short code"
-                      : "Or type / paste a pairing code"}
-                  </span>
-                  <textarea
-                    className="lan-pairing-input lan-pairing-textarea"
+                  <span className="lan-pairing-label">or enter a pairing code</span>
+                  <input
+                    className="lan-pairing-input"
                     value={pastePayload}
-                    onChange={(event) => setPastePayload(event.target.value)}
-                    rows={3}
+                    onChange={(event) => setPastePayload(event.target.value.toUpperCase())}
+                    disabled={busy}
+                    placeholder="e.g. 95A542"
                     spellCheck={false}
+                    autoCapitalize="characters"
                   />
                 </label>
                 <div className="lan-pairing-button-row">
@@ -857,14 +869,14 @@ export default function LanManualPairing({
                     disabled={!pastePayload.trim() || busy}
                     onClick={() => {
                       const classified = classifyLanQrPayload(pastePayload);
-                      if (!classified) {
-                        setStatus("Could not recognize that code or QR text.");
+                      if (!classified || classified.kind !== "code") {
+                        setStatus("That pairing code is not valid.");
                         return;
                       }
                       void handleUnifiedScan(classified);
                     }}
                   >
-                    Submit
+                    Connect
                   </button>
                   <button
                     type="button"
@@ -877,7 +889,7 @@ export default function LanManualPairing({
               </div>
             ) : null}
 
-            {!connected && screen !== "scan-join" && screen !== "cloudless-scan-reply" && screen !== "cloudless-show-reply" ? (
+            {!connected && ENABLE_OFFLINE_QR && screen !== "scan-join" && screen !== "cloudless-scan-reply" && screen !== "cloudless-show-reply" && screen !== "code-host" ? (
               <div className="lan-pairing-join-footer">
                 <button
                   type="button"
@@ -888,10 +900,10 @@ export default function LanManualPairing({
                     setPastePayload("");
                     setScreen("scan-join");
                     setPhase("idle");
-                    setStatus("Scan the QR on the other device.");
+                    setStatus("Not connected");
                   }}
                 >
-                  Scan to join
+                  Scan pairing code
                 </button>
               </div>
             ) : null}

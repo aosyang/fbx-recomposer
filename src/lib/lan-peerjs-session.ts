@@ -34,7 +34,7 @@ function peerErrorMessage(error: unknown): string {
     const type = String(typed.type || "error");
     const message = typed.message || String(error);
     if (type === "network" || type === "server-error" || type === "socket-error") {
-      return `Could not reach the public pairing service (${message}). Check the network and try again.`;
+      return `Could not reach the pairing service (${message}). Check the network and try again.`;
     }
     if (type === "unavailable-id") {
       return "This pairing code is already in use. Generate a new code.";
@@ -163,7 +163,7 @@ export async function connectLanPeerjsSession(
   const timer = window.setTimeout(() => {
     timeout.abort(
       new DOMException(
-        "Couldn’t establish a direct LAN connection in time. Make sure both devices are on the same Wi-Fi and try again.",
+        "Couldn’t connect in time. Make sure both devices are on the same local network, then try again.",
         "TimeoutError",
       ),
     );

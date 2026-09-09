@@ -24,11 +24,11 @@ Import animation from another FBX and retarget compatible motion onto the loaded
 
 ### LAN Transfer
 
-Send an opened character/animation (including Tools modifier settings) or an FBX from disk between two browsers on the **same Wi-Fi**.
+Send an opened character/animation (including Tools modifier settings) or an FBX from disk between two browsers on the **same local network**.
 
 - Both devices open the same public web app (for example GitHub Pages). **No local Vite/Node/Python server is required for pairing.**
-- Create/show a short **pairing code** (+ code QR). The other device taps **Scan to join** or types the code.
-- After pairing, FBX bytes go over a WebRTC DataChannel (prefer LAN). They are not uploaded to any signaling service.
+- Create/show a short **pairing code** (+ code QR). The other device scans or enters the code to connect.
+- After pairing, FBX files transfer directly between devices.
 
 Offline dual-QR pairing is temporarily disabled while scan reliability is improved.
 

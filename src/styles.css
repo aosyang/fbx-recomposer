@@ -2460,7 +2460,8 @@ select {
 
 .lan-pairing-tab-panel,
 .lan-pairing-join-footer,
-.lan-pairing-signal-scan {
+.lan-pairing-signal-scan,
+.lan-pairing-connect-block {
   display: grid;
   gap: 10px;
   width: 100%;
