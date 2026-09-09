@@ -42,9 +42,11 @@ import {
 import {
   analyzeFbxExportContents,
   buildFbxExportDocument,
+  cloneBinaryFbxDocument,
   type FbxExportAvailability,
   type FbxExportSelection,
 } from "./lib/fbx-export";
+import { sanitizeLanMotionStackForReceive } from "./lib/lan-motion-stack";
 import {
   getLastSceneManifest,
   getLocalAsset,
@@ -688,6 +690,9 @@ export default function App() {
   const selectBoneRef = useRef<(boneId: string) => void>(() => undefined);
   const frameObjectRef = useRef<() => void>(() => undefined);
   const saveFbxRef = useRef<(selection: FbxExportSelection) => void>(() => undefined);
+  const createLanExportFileRef = useRef<(selection: FbxExportSelection) => File>(() => {
+    throw new Error("FBX export is not ready");
+  });
   const fixAnimationLoopRef = useRef<(mode: AnimationLoopFixMode, rootPolicy: AnimationLoopRootPolicy) => void>(() => undefined);
   const applyAnimationFixRef = useRef<(config: MotionStackConfig) => void>(() => undefined);
   const animationPoseWarpTargetClipRef = useRef<THREE.AnimationClip | null>(null);
@@ -708,8 +713,11 @@ export default function App() {
   const [workspace, setWorkspace] = useState<AppWorkspace>("viewer");
   const [loadState, setLoadState] = useState<LoadState>("empty");
   const [fileName, setFileName] = useState("");
+  const [animationFileName, setAnimationFileName] = useState("");
   const [exportAvailability, setExportAvailability] =
     useState<FbxExportAvailability>({ character: false, animation: false });
+  const pendingLanMotionStackRef = useRef<MotionStackConfig | null>(null);
+  const applyLanMotionStackConfigRef = useRef<(config: MotionStackConfig) => void>(() => undefined);
   const [saveDialog, setSaveDialog] = useState<FbxExportSelection | null>(null);
   const [message, setMessage] = useState("Drop an FBX file here");
   const [isDragging, setIsDragging] = useState(false);
@@ -826,12 +834,130 @@ export default function App() {
       },
     });
   }, [animationRootMotionEnabled, animationRootMotionMode, animationRootMotionSmoothingWindow, animationRootMotionVelocityTolerance, animationRootMotionExtractX, animationRootMotionExtractZ, animationRootMotionExtractYaw, animationRootMotionYawMode, animationRootMotionYawToleranceDegrees, animationDecompositionEnabled, animationDecompositionBaseMode, animationDecompositionLowGain, animationDecompositionMidGain, animationDecompositionFineGain, animationPoseWarpEnabled, animationPoseWarpAnchor, animationPoseWarpMethod, animationPoseWarpTargetName, animationPoseWarpTargetTime, animationPoseWarpStartTime, animationPoseWarpEndTime, animationFootStabilizerWarpAirborneMotion, animationFootStabilizerInitialAnchorPosition, animationFootStabilizerIntermediateAnchorPosition, animationFootStabilizerFinalAnchorPosition, animationLoopFixEnabled, animationLoopFixMode, animationLoopRootPolicy, animationFootStabilizerEnabled, animationFootStabilizerMovementThreshold, animationFootStabilizerHeightThreshold]);
+
+  const getCurrentMotionStackConfig = useCallback((): MotionStackConfig => ({
+    rootMotion: {
+      enabled: animationRootMotionEnabled,
+      mode: animationRootMotionMode,
+      velocitySmoothingWindow: animationRootMotionSmoothingWindow,
+      velocityTolerance: animationRootMotionVelocityTolerance,
+      extractX: animationRootMotionExtractX,
+      extractZ: animationRootMotionExtractZ,
+      extractYaw: animationRootMotionExtractYaw,
+      yawMode: animationRootMotionYawMode,
+      yawToleranceDegrees: animationRootMotionYawToleranceDegrees,
+    },
+    decomposition: {
+      enabled: animationDecompositionEnabled,
+      baseMode: animationDecompositionBaseMode,
+      lowGain: animationDecompositionLowGain,
+      midGain: animationDecompositionMidGain,
+      fineGain: animationDecompositionFineGain,
+    },
+    poseWarp: {
+      enabled: animationPoseWarpEnabled,
+      anchor: animationPoseWarpAnchor,
+      method: animationPoseWarpMethod,
+      targetName: animationPoseWarpTargetName,
+      targetTime: animationPoseWarpTargetTime,
+      warpStartTime: animationPoseWarpStartTime,
+      warpEndTime: animationPoseWarpEndTime,
+    },
+    loopFix: {
+      enabled: animationLoopFixEnabled,
+      mode: animationLoopFixMode,
+      rootPolicy: animationLoopRootPolicy,
+    },
+    footStabilizer: {
+      enabled: animationFootStabilizerEnabled,
+      movementThreshold: animationFootStabilizerMovementThreshold,
+      heightThreshold: animationFootStabilizerHeightThreshold,
+      warpAirborneMotion: animationFootStabilizerWarpAirborneMotion,
+      initialAnchorPosition: animationFootStabilizerInitialAnchorPosition,
+      intermediateAnchorPosition: animationFootStabilizerIntermediateAnchorPosition,
+      finalAnchorPosition: animationFootStabilizerFinalAnchorPosition,
+    },
+  }), [
+    animationRootMotionEnabled,
+    animationRootMotionMode,
+    animationRootMotionSmoothingWindow,
+    animationRootMotionVelocityTolerance,
+    animationRootMotionExtractX,
+    animationRootMotionExtractZ,
+    animationRootMotionExtractYaw,
+    animationRootMotionYawMode,
+    animationRootMotionYawToleranceDegrees,
+    animationDecompositionEnabled,
+    animationDecompositionBaseMode,
+    animationDecompositionLowGain,
+    animationDecompositionMidGain,
+    animationDecompositionFineGain,
+    animationPoseWarpEnabled,
+    animationPoseWarpAnchor,
+    animationPoseWarpMethod,
+    animationPoseWarpTargetName,
+    animationPoseWarpTargetTime,
+    animationPoseWarpStartTime,
+    animationPoseWarpEndTime,
+    animationLoopFixEnabled,
+    animationLoopFixMode,
+    animationLoopRootPolicy,
+    animationFootStabilizerEnabled,
+    animationFootStabilizerMovementThreshold,
+    animationFootStabilizerHeightThreshold,
+    animationFootStabilizerWarpAirborneMotion,
+    animationFootStabilizerInitialAnchorPosition,
+    animationFootStabilizerIntermediateAnchorPosition,
+    animationFootStabilizerFinalAnchorPosition,
+  ]);
+
+  const applyLanMotionStackConfig = useCallback((config: MotionStackConfig) => {
+    const sanitized = sanitizeLanMotionStackForReceive(config);
+    setAnimationRootMotionEnabled(sanitized.rootMotion.enabled);
+    setAnimationRootMotionMode(sanitized.rootMotion.mode);
+    setAnimationRootMotionSmoothingWindow(sanitized.rootMotion.velocitySmoothingWindow);
+    setAnimationRootMotionVelocityTolerance(sanitized.rootMotion.velocityTolerance);
+    setAnimationRootMotionExtractX(sanitized.rootMotion.extractX);
+    setAnimationRootMotionExtractZ(sanitized.rootMotion.extractZ);
+    setAnimationRootMotionExtractYaw(sanitized.rootMotion.extractYaw);
+    setAnimationRootMotionYawMode(sanitized.rootMotion.yawMode);
+    setAnimationRootMotionYawToleranceDegrees(sanitized.rootMotion.yawToleranceDegrees);
+    setAnimationDecompositionEnabled(sanitized.decomposition.enabled);
+    setAnimationDecompositionBaseMode(sanitized.decomposition.baseMode);
+    setAnimationDecompositionLowGain(sanitized.decomposition.lowGain);
+    setAnimationDecompositionMidGain(sanitized.decomposition.midGain);
+    setAnimationDecompositionFineGain(sanitized.decomposition.fineGain);
+    setAnimationPoseWarpEnabled(sanitized.poseWarp.enabled);
+    setAnimationPoseWarpAnchor(sanitized.poseWarp.anchor);
+    setAnimationPoseWarpMethod(sanitized.poseWarp.method);
+    setAnimationPoseWarpTargetName(sanitized.poseWarp.targetName);
+    setAnimationPoseWarpTargetTime(sanitized.poseWarp.targetTime);
+    setAnimationPoseWarpStartTime(sanitized.poseWarp.warpStartTime);
+    setAnimationPoseWarpEndTime(sanitized.poseWarp.warpEndTime);
+    setAnimationLoopFixEnabled(sanitized.loopFix.enabled);
+    setAnimationLoopFixMode(sanitized.loopFix.mode);
+    setAnimationLoopRootPolicy(sanitized.loopFix.rootPolicy);
+    setAnimationFootStabilizerEnabled(sanitized.footStabilizer.enabled);
+    setAnimationFootStabilizerMovementThreshold(sanitized.footStabilizer.movementThreshold);
+    setAnimationFootStabilizerHeightThreshold(sanitized.footStabilizer.heightThreshold);
+    setAnimationFootStabilizerWarpAirborneMotion(sanitized.footStabilizer.warpAirborneMotion);
+    setAnimationFootStabilizerInitialAnchorPosition(sanitized.footStabilizer.initialAnchorPosition);
+    setAnimationFootStabilizerIntermediateAnchorPosition(sanitized.footStabilizer.intermediateAnchorPosition);
+    setAnimationFootStabilizerFinalAnchorPosition(sanitized.footStabilizer.finalAnchorPosition);
+    setMessage("Applied Tools settings received over LAN.");
+  }, []);
+
+  useEffect(() => {
+    applyLanMotionStackConfigRef.current = applyLanMotionStackConfig;
+  }, [applyLanMotionStackConfig]);
+
   const [animationModelAlternative, setAnimationModelAlternative] = useState<{
     file: File;
     resources: File[];
   } | null>(null);
   const [animationTimeline, setAnimationTimeline] =
     useState<AnimationTimeline | null>(null);
+
   const [stripRootMotionPreview, setStripRootMotionPreview] = useState(false);
   const stripRootMotionPreviewRef = useRef(false);
   const [mappingDetailsOpen, setMappingDetailsOpen] = useState(false);
@@ -1056,48 +1182,83 @@ export default function App() {
       color: 0xd8dde1,
     });
 
+    const stem = (name: string, fallback: string) => {
+      const source = name || fallback;
+      return source.toLowerCase().endsWith(".fbx") ? source.slice(0, -4) : source;
+    };
+
+    const buildExportFile = (
+      selection: FbxExportSelection,
+      options: { pristine: boolean } = { pristine: false },
+    ): File => {
+      if (!loadedBinaryDocument) {
+        throw new Error("No exportable FBX is loaded");
+      }
+
+      const characterSource = cloneBinaryFbxDocument(loadedBinaryDocument);
+      if (
+        options.pristine &&
+        !externalAnimationApplied &&
+        loadedAnimationBinaryBaseline
+      ) {
+        restoreBinaryFbxAnimationCurves(characterSource, loadedAnimationBinaryBaseline);
+      }
+
+      let animationDocument: BinaryFbxDocument | null = null;
+      if (externalAnimationApplied && activeAnimationBinaryDocument) {
+        animationDocument = cloneBinaryFbxDocument(activeAnimationBinaryDocument);
+        if (options.pristine && activeAnimationBinaryBaseline) {
+          restoreBinaryFbxAnimationCurves(
+            animationDocument,
+            activeAnimationBinaryBaseline,
+          );
+        }
+      }
+
+      const exportDocument = buildFbxExportDocument(
+        characterSource,
+        animationDocument,
+        selection,
+      );
+      const output = writeBinaryFbx(exportDocument);
+      const characterStem = stem(loadedBinaryFileName, "character");
+      const animationStem = stem(
+        activeAnimationFileName || loadedBinaryFileName,
+        "animation",
+      );
+      const downloadName = selection.character && selection.animation
+        ? `${characterStem}_with_animation.fbx`
+        : selection.character
+          ? `${characterStem}_character.fbx`
+          : `${animationStem}_animation.fbx`;
+      return new File([output], downloadName, {
+        type: "application/octet-stream",
+        lastModified: Date.now(),
+      });
+    };
+
     saveFbxRef.current = (selection: FbxExportSelection) => {
       try {
-        const animationDocument = externalAnimationApplied
-          ? activeAnimationBinaryDocument
-          : null;
-        const exportDocument = buildFbxExportDocument(
-          loadedBinaryDocument,
-          animationDocument,
-          selection,
-        );
-        const output = writeBinaryFbx(exportDocument);
-        const blob = new Blob([output], { type: "application/octet-stream" });
-        const url = URL.createObjectURL(blob);
-        const stem = (name: string, fallback: string) => {
-          const source = name || fallback;
-          return source.toLowerCase().endsWith(".fbx") ? source.slice(0, -4) : source;
-        };
-        const characterStem = stem(loadedBinaryFileName, "character");
-        const animationStem = stem(
-          activeAnimationFileName || loadedBinaryFileName,
-          "animation",
-        );
-        const downloadName = selection.character && selection.animation
-          ? `${characterStem}_with_animation.fbx`
-          : selection.character
-            ? `${characterStem}_character.fbx`
-            : `${animationStem}_animation.fbx`;
+        const file = buildExportFile(selection, { pristine: false });
+        const url = URL.createObjectURL(file);
         const link = document.createElement("a");
         link.href = url;
-        link.download = downloadName;
+        link.download = file.name;
         link.style.display = "none";
         document.body.appendChild(link);
         link.click();
         link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 0);
-        setMessage(`FBX download started: ${downloadName}`);
+        setMessage(`FBX download started: ${file.name}`);
       } catch (error) {
         const detail = getErrorDetail(error);
         console.error(`[FBX Recomposer] FBX save failed: ${detail}`, error);
         setMessage(`FBX save failed: ${detail}`);
       }
     };
+
+    createLanExportFileRef.current = (selection: FbxExportSelection) =>
+      buildExportFile(selection, { pristine: true });
 
     const resize = () => {
       const { clientWidth, clientHeight } = viewport;
@@ -1254,6 +1415,13 @@ export default function App() {
       model.updateWorldMatrix(true, true);
     };
 
+    const flushPendingLanMotionStack = () => {
+      const pending = pendingLanMotionStackRef.current;
+      if (!pending) return;
+      pendingLanMotionStackRef.current = null;
+      queueMicrotask(() => applyLanMotionStackConfigRef.current(pending));
+    };
+
     const setActiveAnimation = (
       nextMixer: THREE.AnimationMixer,
       clips: THREE.AnimationClip[],
@@ -1311,6 +1479,7 @@ export default function App() {
       model?.updateWorldMatrix(true, true);
       syncAnimationTimeline(true);
       if (refocusViewport) frameObject();
+      if (rememberPristineSource) flushPendingLanMotionStack();
     };
 
     loadPoseWarpTargetRef.current = (file: File) => {
@@ -2023,6 +2192,7 @@ export default function App() {
         ? readBinaryFbx(writeBinaryFbx(pendingAnimationBinaryDocument))
         : null;
       activeAnimationFileName = pendingAnimationFileName;
+      setAnimationFileName(pendingAnimationFileName);
       externalAnimationApplied = true;
       const baseAvailability = analyzeFbxExportContents(loadedBinaryDocument);
       const externalAvailability = analyzeFbxExportContents(
@@ -2074,6 +2244,7 @@ export default function App() {
 
       setLoadState("loading");
       setFileName(file.name);
+      setAnimationFileName("");
       setExportAvailability({ character: false, animation: false });
       setSaveDialog(null);
       loadedBinaryDocument = null;
@@ -2105,6 +2276,7 @@ export default function App() {
       reader.onerror = () => {
         setLoadState("error");
         setMessage("Could not read this file");
+        pendingLanMotionStackRef.current = null;
       };
       reader.onload = () => {
         let loadStage = "FBX parsing";
@@ -2196,6 +2368,8 @@ export default function App() {
               new THREE.AnimationMixer(model),
               model.animations,
             );
+          } else {
+            flushPendingLanMotionStack();
           }
 
           frameObject();
@@ -2235,6 +2409,7 @@ export default function App() {
           console.error(`[FBX Recomposer] ${loadStage} failed: ${detail}`, error);
           setLoadState("error");
           setMessage(`${loadStage} failed: ${detail}`);
+          pendingLanMotionStackRef.current = null;
         }
       };
       reader.readAsArrayBuffer(file);
@@ -2316,6 +2491,9 @@ export default function App() {
         selectionMarker.material.dispose();
       }
       saveFbxRef.current = () => undefined;
+      createLanExportFileRef.current = () => {
+        throw new Error("FBX export is not ready");
+      };
       fixAnimationLoopRef.current = () => undefined;
       applyAnimationFixRef.current = () => undefined;
       loadPoseWarpTargetRef.current = () => undefined;
@@ -2392,6 +2570,7 @@ export default function App() {
 
   const routeFbxFile = useCallback(async (file: File, resources: File[] = []) => {
     if (!file.name.toLowerCase().endsWith(".fbx")) {
+      pendingLanMotionStackRef.current = null;
       setDropChoice({
         file,
         status: "error",
@@ -2417,6 +2596,7 @@ export default function App() {
       disposeObject(source);
 
       if (!hasModel && !hasAnimation) {
+        pendingLanMotionStackRef.current = null;
         setDropChoice({
           file,
           status: "error",
@@ -2479,8 +2659,10 @@ export default function App() {
         resources,
         error: "Open a rigged model first to use this animation FBX.",
       });
+      pendingLanMotionStackRef.current = null;
     } catch (error) {
       console.error(`[FBX Recomposer] FBX analysis failed: ${getErrorDetail(error)}`, error);
+      pendingLanMotionStackRef.current = null;
       setDropChoice({
         file,
         status: "error",
@@ -2776,7 +2958,18 @@ export default function App() {
                 })
               }
             />
-            <LanManualPairing onReceiveFile={(file) => routeFbxFile(file)} />
+            <LanManualPairing
+              canSendCharacter={exportAvailability.character}
+              canSendAnimation={exportAvailability.animation}
+              characterFileName={fileName}
+              animationFileName={animationFileName}
+              createOpenedExportFile={(selection) => createLanExportFileRef.current(selection)}
+              getMotionStackConfig={getCurrentMotionStackConfig}
+              onReceiveFile={async (file, meta) => {
+                pendingLanMotionStackRef.current = meta?.motionStack ?? null;
+                await routeFbxFile(file);
+              }}
+            />
           </div>
         </div>
         {loadState === "ready" && (

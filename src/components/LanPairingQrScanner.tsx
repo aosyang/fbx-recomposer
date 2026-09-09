@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import jsQR from "jsqr";
 import {
-  decodeLanPairingQrFromFile,
-  parseLanPairingQrPayload,
+  classifyLanQrPayload,
+  decodeLanQrFromImageData,
+  decodeLanQrRawFromFile,
+  type LanScannedPayload,
 } from "../lib/lan-pairing-qr.js";
+
+export type { LanScannedPayload };
+export { classifyLanQrPayload };
 
 type LanPairingQrScannerProps = {
   disabled?: boolean;
-  onCode: (code: string) => void;
+  /**
+   * code: short pairing codes only
+   * signal: signaling QR only
+   * auto: accept either (for unified Scan to join)
+   */
+  mode?: "code" | "signal" | "auto";
+  onCode?: (code: string) => void;
+  onSignal?: (payload: string) => void;
+  onScan?: (result: LanScannedPayload) => void;
 };
 
 function canUseLiveCamera(): boolean {
@@ -18,11 +30,30 @@ function canUseLiveCamera(): boolean {
   );
 }
 
-async function decodeQrFromImageFile(file: File): Promise<string | null> {
-  return decodeLanPairingQrFromFile(file);
+function acceptScan(
+  raw: string,
+  mode: "code" | "signal" | "auto",
+  onCode?: (code: string) => void,
+  onSignal?: (payload: string) => void,
+  onScan?: (result: LanScannedPayload) => void,
+): boolean {
+  const classified = classifyLanQrPayload(raw);
+  if (!classified) return false;
+  if (mode === "code" && classified.kind !== "code") return false;
+  if (mode === "signal" && classified.kind !== "signal") return false;
+  onScan?.(classified);
+  if (classified.kind === "code") onCode?.(classified.code);
+  else onSignal?.(classified.payload);
+  return true;
 }
 
-export default function LanPairingQrScanner({ disabled = false, onCode }: LanPairingQrScannerProps) {
+export default function LanPairingQrScanner({
+  disabled = false,
+  mode = "auto",
+  onCode,
+  onSignal,
+  onScan,
+}: LanPairingQrScannerProps) {
   const liveSupported = useMemo(() => canUseLiveCamera(), []);
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +63,14 @@ export default function LanPairingQrScanner({ disabled = false, onCode }: LanPai
   const captureInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const frameRef = useRef<number | null>(null);
+  const modeRef = useRef(mode);
   const onCodeRef = useRef(onCode);
+  const onSignalRef = useRef(onSignal);
+  const onScanRef = useRef(onScan);
+  modeRef.current = mode;
   onCodeRef.current = onCode;
+  onSignalRef.current = onSignal;
+  onScanRef.current = onScan;
 
   const stopTracks = () => {
     if (frameRef.current !== null) {
@@ -66,15 +103,13 @@ export default function LanPairingQrScanner({ disabled = false, onCode }: LanPai
     }
 
     let cancelled = false;
-    let foundCode: string | null = null;
+    let found = false;
 
     const start = async () => {
       setError(null);
       try {
         if (!canUseLiveCamera()) {
-          throw new Error(
-            "Live camera needs HTTPS. Use “Take photo of QR” instead on this network address.",
-          );
+          throw new Error("Live camera needs HTTPS. Use photo capture instead.");
         }
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
@@ -101,7 +136,7 @@ export default function LanPairingQrScanner({ disabled = false, onCode }: LanPai
         if (!context) throw new Error("Could not read camera frames.");
 
         const tick = () => {
-          if (cancelled || !streamRef.current || foundCode) return;
+          if (cancelled || !streamRef.current || found) return;
           if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
             const width = video.videoWidth;
             const height = video.videoHeight;
@@ -110,22 +145,19 @@ export default function LanPairingQrScanner({ disabled = false, onCode }: LanPai
               canvas.height = height;
               context.drawImage(video, 0, 0, width, height);
               const image = context.getImageData(0, 0, width, height);
-              const result = (() => {
-                try {
-                  return jsQR(image.data, image.width, image.height, {
-                    inversionAttempts: "dontInvert",
-                  });
-                } catch {
-                  return null;
-                }
-              })();
-              if (result?.data) {
-                const code = parseLanPairingQrPayload(result.data);
-                if (code) {
-                  foundCode = code;
+              const raw = decodeLanQrFromImageData(image);
+              if (raw) {
+                const ok = acceptScan(
+                  raw,
+                  modeRef.current,
+                  onCodeRef.current,
+                  onSignalRef.current,
+                  onScanRef.current,
+                );
+                if (ok) {
+                  found = true;
                   stopTracks();
                   setActive(false);
-                  onCodeRef.current(code);
                   return;
                 }
               }
@@ -161,12 +193,11 @@ export default function LanPairingQrScanner({ disabled = false, onCode }: LanPai
     setDecoding(true);
     setError(null);
     try {
-      const code = await decodeQrFromImageFile(file);
-      if (!code) {
-        setError("No pairing QR found. Fill the frame with the QR, avoid glare, then try again.");
+      const raw = await decodeLanQrRawFromFile(file);
+      if (!raw || !acceptScan(raw, mode, onCode, onSignal, onScan)) {
+        setError("No matching QR found. Fill the frame, avoid glare, then try again.");
         return;
       }
-      onCodeRef.current(code);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read that photo.");
     } finally {

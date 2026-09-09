@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Peer } from "peerjs";
+import type { MotionStackConfig } from "./AnimationFixStack";
+import type { FbxExportSelection } from "../lib/fbx-export";
 import {
   LanFileTransferController,
   type LanFileTransferState,
+  type LanReceiveFileMeta,
 } from "../lib/lan-transfer-controller.js";
 import {
   defaultLanDeviceName,
-  HttpLanSignalingAdapter,
-  isLanHttpSignalingAvailable,
-} from "../lib/lan-http-signaling.js";
-import { LanPeerSession, type LanPeerRole } from "../lib/lan-peer-session.js";
+  isValidLanPairingCode,
+  makeLanPairingId,
+  normalizeLanPairingCode,
+} from "../lib/lan-signaling-config.js";
+import { connectLanPeerjsSession } from "../lib/lan-peerjs-session.js";
+import { ManualQrSignalingAdapter, parseLanSignalQrPayload } from "../lib/lan-qr-signaling.js";
+import { LanPeerSession } from "../lib/lan-peer-session.js";
+import type { LanSignalKind } from "../lib/lan-signaling.js";
 import type { LanTransferProgress } from "../lib/lan-transfer-protocol.js";
 import {
   announceTopbarMenu,
@@ -18,23 +26,32 @@ import {
 } from "../lib/topbar-menus.js";
 import LanPairingQrCode from "./LanPairingQrCode";
 import LanPairingQrScanner from "./LanPairingQrScanner";
+import { classifyLanQrPayload, type LanScannedPayload } from "../lib/lan-pairing-qr.js";
 
-type UiMode = "home" | "create" | "enter" | "connected";
+/** Offline dual-QR signaling is hidden until scan reliability is fixed. */
+const ENABLE_OFFLINE_QR = false;
+
+type MethodTab = "code" | "cloudless";
+type Screen =
+  | "tabs"
+  | "code-host"
+  | "cloudless-show"
+  | "cloudless-scan-reply"
+  | "cloudless-show-reply"
+  | "scan-join"
+  | "connected";
 type PairingPhase = "idle" | "waiting" | "connecting" | "connected" | "error";
-
-type LanManualPairingProps = {
-  onReceiveFile?: (file: File) => void | Promise<void>;
-};
-
 type TransferDirection = "send" | "receive";
 
-function makePairingId(): string {
-  const bytes = new Uint8Array(3);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0"))
-    .join("")
-    .toUpperCase();
-}
+type LanManualPairingProps = {
+  canSendCharacter?: boolean;
+  canSendAnimation?: boolean;
+  characterFileName?: string;
+  animationFileName?: string;
+  createOpenedExportFile?: (selection: FbxExportSelection) => File;
+  getMotionStackConfig?: () => MotionStackConfig;
+  onReceiveFile?: (file: File, meta?: LanReceiveFileMeta) => void | Promise<void>;
+};
 
 function progressPercent(progress: LanTransferProgress | null): number {
   if (!progress) return 0;
@@ -63,15 +80,33 @@ function stateMessage(state: LanFileTransferState): string {
   }
 }
 
-export default function LanManualPairing({ onReceiveFile }: LanManualPairingProps) {
+function shortName(name: string, fallback: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return fallback;
+  return trimmed.toLowerCase().endsWith(".fbx") ? trimmed.slice(0, -4) : trimmed;
+}
+
+export default function LanManualPairing({
+  canSendCharacter = false,
+  canSendAnimation = false,
+  characterFileName = "",
+  animationFileName = "",
+  createOpenedExportFile,
+  getMotionStackConfig,
+  onReceiveFile,
+}: LanManualPairingProps) {
   const [open, setOpen] = useState(false);
-  const [uiMode, setUiMode] = useState<UiMode>("home");
-  const [pairingId, setPairingId] = useState(() => makePairingId());
-  const [enterCode, setEnterCode] = useState("");
+  const [methodTab, setMethodTab] = useState<MethodTab>("code");
+  const [screen, setScreen] = useState<Screen>("tabs");
+  const [pairingId, setPairingId] = useState(() => makeLanPairingId());
+  const [manualCode, setManualCode] = useState("");
   const [phase, setPhase] = useState<PairingPhase>("idle");
   const [status, setStatus] = useState("Not connected");
   const [peerName, setPeerName] = useState<string | null>(null);
-  const [httpAvailable, setHttpAvailable] = useState<boolean | null>(null);
+  const [localSignalPayload, setLocalSignalPayload] = useState<string | null>(null);
+  const [localSignalKind, setLocalSignalKind] = useState<LanSignalKind | null>(null);
+  const [awaitingRemoteKind, setAwaitingRemoteKind] = useState<LanSignalKind | null>(null);
+  const [pastePayload, setPastePayload] = useState("");
   const [transferDirection, setTransferDirection] = useState<TransferDirection | null>(null);
   const [transferProgress, setTransferProgress] = useState<LanTransferProgress | null>(null);
 
@@ -79,26 +114,40 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
   const sendFileInputRef = useRef<HTMLInputElement | null>(null);
   const deviceNameRef = useRef(defaultLanDeviceName());
   const peerNameRef = useRef<string | null>(null);
-  const httpAdapterRef = useRef<HttpLanSignalingAdapter | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const peerjsRef = useRef<Peer | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
   const transferRef = useRef<LanFileTransferController | null>(null);
   const sendAbortRef = useRef<AbortController | null>(null);
-  const activeCodeRef = useRef<string | null>(null);
+  const remotePayloadWaiterRef = useRef<{
+    kind: LanSignalKind;
+    resolve: (payload: string) => void;
+    reject: (error: unknown) => void;
+  } | null>(null);
 
   const transferPercent = progressPercent(transferProgress);
   const transferActive = transferDirection !== null;
   const busy = phase === "waiting" || phase === "connecting";
+  const canSendOpened = Boolean(createOpenedExportFile) && (canSendCharacter || canSendAnimation);
+  const connected = screen === "connected" || phase === "connected";
 
   const clearTransferState = () => {
     setTransferDirection(null);
     setTransferProgress(null);
   };
 
+  const clearSignalUi = () => {
+    setLocalSignalPayload(null);
+    setLocalSignalKind(null);
+    setAwaitingRemoteKind(null);
+    setPastePayload("");
+    const waiter = remotePayloadWaiterRef.current;
+    remotePayloadWaiterRef.current = null;
+    waiter?.reject(new DOMException("Pairing cancelled", "AbortError"));
+  };
+
   const tearDownConnection = () => {
-    const code = activeCodeRef.current;
-    const httpAdapter = httpAdapterRef.current;
     sendAbortRef.current?.abort(new DOMException("Pairing disconnected", "AbortError"));
     sendAbortRef.current = null;
     transferRef.current?.cancelReceive("Pairing disconnected");
@@ -110,35 +159,23 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
     channelRef.current = null;
     peerRef.current?.close();
     peerRef.current = null;
-    if (code && httpAdapter) {
-      void httpAdapter.clearRoom(code);
-    }
-    httpAdapterRef.current = null;
-    activeCodeRef.current = null;
+    peerjsRef.current?.destroy();
+    peerjsRef.current = null;
     peerNameRef.current = null;
     clearTransferState();
+    clearSignalUi();
     setPeerName(null);
   };
 
-  const disconnect = (nextStatus = "Not connected") => {
+  const resetToTabs = (nextStatus = "Not connected") => {
     tearDownConnection();
     setPhase("idle");
-    setUiMode("home");
+    setScreen("tabs");
     setStatus(nextStatus);
   };
 
   useEffect(() => () => {
     tearDownConnection();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void isLanHttpSignalingAvailable().then((available) => {
-      if (!cancelled) setHttpAvailable(available);
-    });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
@@ -152,7 +189,6 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
 
   useEffect(() => {
     if (!open) return;
-
     const onPointerDown = (event: MouseEvent) => {
       const root = rootRef.current;
       if (!root || root.contains(event.target as Node)) return;
@@ -161,7 +197,6 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -180,8 +215,10 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
       return next;
     });
   };
+
   const installTransferController = (channel: RTCDataChannel) => {
     transferRef.current?.dispose();
+    channelRef.current = channel;
     transferRef.current = new LanFileTransferController(channel, {
       onSendProgress: (progress) => {
         setTransferDirection("send");
@@ -191,10 +228,14 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
         setTransferDirection("receive");
         setTransferProgress(progress);
       },
-      onReceiveFile: async (file) => {
+      onReceiveFile: async (file, meta) => {
         setStatus(`Received ${file.name}. Opening it...`);
-        await onReceiveFile?.(file);
-        setStatus(`Received and opened ${file.name}.`);
+        await onReceiveFile?.(file, meta);
+        setStatus(
+          meta?.motionStack
+            ? `Received and opened ${file.name} with Tools settings.`
+            : `Received and opened ${file.name}.`,
+        );
       },
       onState: (state) => {
         setStatus(stateMessage(state));
@@ -217,59 +258,53 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
     });
   };
 
-  const connectPeer = async (
-    role: LanPeerRole,
-    code: string,
-    waitingStatus: string,
-    nextUiMode: UiMode,
-  ) => {
+  const markConnected = (label?: string) => {
+    const connectedName = label ?? peerNameRef.current;
+    setPhase("connected");
+    setScreen("connected");
+    setStatus(connectedName ? `Connected to ${connectedName}` : "Connected");
+    if (connectedName) setPeerName(connectedName);
+  };
+
+  const connectPeerjs = async (role: "host" | "joiner", code: string) => {
     tearDownConnection();
-    const adapter = new HttpLanSignalingAdapter(deviceNameRef.current, (meta) => {
-      peerNameRef.current = meta.deviceName;
-      setPeerName(meta.deviceName);
-      setStatus(`Connecting to ${meta.deviceName}...`);
-    });
-    httpAdapterRef.current = adapter;
-    activeCodeRef.current = code;
-    setPairingId(code);
-    setUiMode(nextUiMode);
+    const normalized = normalizeLanPairingCode(code);
+    if (role === "joiner" && !isValidLanPairingCode(normalized)) {
+      setPhase("error");
+      setStatus("That pairing code is not valid.");
+      return;
+    }
+    setPairingId(normalized);
+    setMethodTab("code");
+    setScreen(role === "host" ? "code-host" : "scan-join");
     setPhase(role === "host" ? "waiting" : "connecting");
-    setStatus(waitingStatus);
+    setStatus(
+      role === "host"
+        ? "Waiting for the other device. They should tap Scan to join."
+        : `Connecting with code ${normalized}…`,
+    );
 
     const controller = new AbortController();
     abortRef.current = controller;
-
     try {
-      const session = new LanPeerSession(adapter);
-      const { peer, channel } = await session.connect(role, code, controller.signal);
+      const session = await connectLanPeerjsSession(role, normalized, controller.signal, {
+        metadata: { deviceName: deviceNameRef.current },
+      });
       if (controller.signal.aborted) {
-        peer.close();
-        channel.close();
+        session.peer.destroy();
         return;
       }
-
-      peerRef.current = peer;
-      channelRef.current = channel;
-      installTransferController(channel);
-
-      const markConnected = () => {
-        const connectedName = peerNameRef.current;
-        setPhase("connected");
-        setUiMode("connected");
-        setStatus(connectedName ? `Connected to ${connectedName}` : "Connected");
-      };
-      if (channel.readyState === "open") {
-        markConnected();
-      } else {
-        channel.addEventListener("open", markConnected, { once: true });
-        setPhase("connecting");
-        setStatus("Finishing connection...");
+      peerjsRef.current = session.peer;
+      const remoteMeta = session.connection.metadata as { deviceName?: string } | undefined;
+      if (remoteMeta?.deviceName) {
+        peerNameRef.current = remoteMeta.deviceName;
+        setPeerName(remoteMeta.deviceName);
       }
-      channel.addEventListener("close", () => {
-        if (!controller.signal.aborted) {
-          disconnect("Connection closed.");
-        }
+      installTransferController(session.channel);
+      session.channel.addEventListener("close", () => {
+        if (!controller.signal.aborted) resetToTabs("Connection closed.");
       }, { once: true });
+      markConnected(remoteMeta?.deviceName);
     } catch (error) {
       if (controller.signal.aborted) return;
       setPhase("error");
@@ -277,39 +312,162 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
     }
   };
 
-  const createCode = async () => {
-    if (httpAvailable === false) {
-      setPhase("error");
-      setStatus("LAN pairing needs the app server running on this network.");
-      return;
-    }
+  const startCloudlessSession = async (
+    role: "host" | "joiner",
+    initialOfferPayload?: string,
+  ) => {
+    tearDownConnection();
+    const code = makeLanPairingId();
+    setPairingId(code);
+    setMethodTab("cloudless");
+    setScreen(role === "host" ? "cloudless-show" : "scan-join");
+    setPhase(role === "host" ? "waiting" : "connecting");
+    setStatus(
+      role === "host"
+        ? "Show this QR. The other device taps Scan to join — no need to switch tabs."
+        : "Connecting…",
+    );
 
-    const code = makePairingId();
-    peerNameRef.current = null;
-    setPeerName(null);
-    await connectPeer("host", code, "Waiting for another device to connect…", "create");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let offerFed = false;
+
+    const adapter = new ManualQrSignalingAdapter({
+      presentLocalPayload: (kind, payload) => {
+        setLocalSignalKind(kind);
+        setLocalSignalPayload(payload);
+        if (kind === "offer") {
+          setScreen("cloudless-show");
+          setStatus("Show this QR to the other device. Do not scan it on this device.");
+        } else {
+          setScreen("cloudless-show-reply");
+          setStatus("Show this QR to the other device. Waiting for them to scan it…");
+        }
+      },
+      waitForRemotePayload: (kind, signal) => new Promise<string>((resolve, reject) => {
+        const existing = remotePayloadWaiterRef.current;
+        existing?.reject(new Error("Superseded signaling wait"));
+        setAwaitingRemoteKind(kind);
+        if (kind === "offer" && !initialOfferPayload) setScreen("scan-join");
+        const onAbort = () => {
+          if (remotePayloadWaiterRef.current?.kind === kind) {
+            remotePayloadWaiterRef.current = null;
+          }
+          setAwaitingRemoteKind((current) => (current === kind ? null : current));
+          reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+        };
+        remotePayloadWaiterRef.current = {
+          kind,
+          resolve: (payload) => {
+            signal?.removeEventListener("abort", onAbort);
+            remotePayloadWaiterRef.current = null;
+            setAwaitingRemoteKind((current) => (current === kind ? null : current));
+            resolve(payload);
+          },
+          reject: (error) => {
+            signal?.removeEventListener("abort", onAbort);
+            remotePayloadWaiterRef.current = null;
+            setAwaitingRemoteKind((current) => (current === kind ? null : current));
+            reject(error);
+          },
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
+        if (kind === "offer" && initialOfferPayload && !offerFed) {
+          offerFed = true;
+          window.queueMicrotask(() => {
+            if (remotePayloadWaiterRef.current?.kind === "offer") {
+              remotePayloadWaiterRef.current.resolve(initialOfferPayload);
+            }
+          });
+        } else if (kind === "offer") {
+          setStatus("Scan the QR shown on the other device.");
+        }
+      }),
+    });
+
+    try {
+      const session = new LanPeerSession(adapter, {
+        rtcConfig: { iceServers: [] },
+      });
+      const { peer, channel } = await session.connect(role, code, controller.signal);
+      if (controller.signal.aborted) {
+        peer.close();
+        channel.close();
+        return;
+      }
+      peerRef.current = peer;
+      installTransferController(channel);
+      channel.addEventListener("close", () => {
+        if (!controller.signal.aborted) resetToTabs("Connection closed.");
+      }, { once: true });
+      clearSignalUi();
+      markConnected();
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setPhase("error");
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
   };
 
-  const connectWithCode = async (rawCode = enterCode) => {
-    const code = rawCode.trim().toUpperCase();
-    if (!code) {
-      setPhase("error");
-      setStatus("Enter a pairing code first.");
+  const submitRemoteSignalPayload = async (payload: string) => {
+    const waiter = remotePayloadWaiterRef.current;
+    if (!waiter) {
+      setStatus("Not waiting for a QR from the other device right now.");
       return;
     }
-    if (httpAvailable === false) {
-      setPhase("error");
-      setStatus("LAN pairing needs the app server running on this network.");
+    const normalized = payload.trim().replace(/\s+/g, "");
+    const bundle = await parseLanSignalQrPayload(normalized);
+    if (!bundle) {
+      setStatus("That QR is not a valid pairing message. Try again.");
       return;
     }
-
-    setEnterCode(code);
-    peerNameRef.current = null;
-    setPeerName(null);
-    await connectPeer("joiner", code, `Connecting with code ${code}...`, "enter");
+    if (bundle.kind !== waiter.kind) {
+      setStatus("That QR is for the other step. Ask them to show the QR they have now, then scan again.");
+      return;
+    }
+    waiter.resolve(normalized);
+    setPastePayload("");
   };
 
-  const sendFile = async (file?: File) => {
+  const handleUnifiedScan = async (result: LanScannedPayload) => {
+    // If this device is already waiting for a specific signaling QR (host step 2), prefer that.
+    if (remotePayloadWaiterRef.current) {
+      if (result.kind === "signal") {
+        await submitRemoteSignalPayload(result.payload);
+        return;
+      }
+      setStatus("That QR is for the other step. Ask them to show the QR they have now, then scan again.");
+      return;
+    }
+
+    if (result.kind === "code") {
+      await connectPeerjs("joiner", result.code);
+      return;
+    }
+
+    if (!ENABLE_OFFLINE_QR) {
+      setStatus("Offline QR is temporarily unavailable. Use a pairing code instead.");
+      return;
+    }
+
+    const bundle = await parseLanSignalQrPayload(result.payload);
+    if (!bundle) {
+      setStatus("That QR is not a valid pairing message.");
+      return;
+    }
+    if (bundle.kind === "answer") {
+      setStatus("That QR is a reply. Scan the first QR on the other device instead.");
+      return;
+    }
+
+    // Joiner cloudless: start with the offer already scanned.
+    void startCloudlessSession("joiner", result.payload);
+  };
+
+  const sendFile = async (
+    file?: File,
+    options?: { motionStack?: MotionStackConfig },
+  ) => {
     if (!file) return;
     const transfer = transferRef.current;
     if (!transfer || channelRef.current?.readyState !== "open") {
@@ -320,14 +478,14 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
       setStatus("A send is already active.");
       return;
     }
-
     const controller = new AbortController();
     sendAbortRef.current = controller;
     setTransferDirection("send");
     setTransferProgress(null);
-
     try {
-      await transfer.send(file, controller.signal);
+      await transfer.send(file, controller.signal, {
+        motionStack: options?.motionStack,
+      });
     } catch (error) {
       if (!controller.signal.aborted) {
         setPhase("error");
@@ -335,6 +493,19 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
       }
     } finally {
       if (sendAbortRef.current === controller) sendAbortRef.current = null;
+    }
+  };
+
+  const sendOpenedSelection = async (selection: FbxExportSelection) => {
+    if (!createOpenedExportFile) {
+      setStatus("No opened FBX is available to send.");
+      return;
+    }
+    try {
+      const file = createOpenedExportFile(selection);
+      await sendFile(file, { motionStack: getMotionStackConfig?.() });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -347,32 +518,33 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
     setStatus(hadSend ? "Cancelling send..." : "Transfer cancelled.");
   };
 
-  const copyPairingCode = async () => {
+  const copyText = async (value: string, okMessage: string) => {
     try {
-      await navigator.clipboard.writeText(pairingId);
-      setStatus("Pairing code copied.");
+      await navigator.clipboard.writeText(value);
+      setStatus(okMessage);
     } catch {
-      setStatus("Could not copy the pairing code.");
+      setStatus("Could not copy to the clipboard.");
     }
   };
 
   const headline = useMemo(() => {
-    if (phase === "connected") {
-      return peerName ? `Connected to ${peerName}` : "Connected";
-    }
+    if (connected) return peerName ? `Connected to ${peerName}` : "Connected";
     if (phase === "error") return "Connection failed";
-    if (uiMode === "create" && busy) return "Waiting for another device to connect…";
-    if (uiMode === "enter" && busy) return "Connecting…";
+    if (screen === "code-host") return "Show this pairing code";
+    if (screen === "cloudless-show") return "Show this QR";
+    if (screen === "cloudless-scan-reply") return "Scan their QR";
+    if (screen === "cloudless-show-reply") return "Show this QR";
+    if (screen === "scan-join") return "Scan to join";
     return "Not connected";
-  }, [busy, peerName, phase, uiMode]);
+  }, [connected, peerName, phase, screen]);
 
-  const statusBadge = useMemo(() => {
-    if (phase === "connected") return "Connected";
-    if (phase === "error") return "Failed";
-    if (uiMode === "create" && busy) return "Ready";
-    if (uiMode === "enter" && busy) return "Connecting";
-    return "Idle";
-  }, [busy, phase, uiMode]);
+  const characterLabel = shortName(characterFileName, "character");
+  const animationLabel = shortName(animationFileName || characterFileName, "animation");
+
+  const showTabsChrome =
+    ENABLE_OFFLINE_QR
+    && !connected
+    && (screen === "tabs" || screen === "code-host" || screen === "cloudless-show");
 
   return (
     <div className="lan-pairing" ref={rootRef}>
@@ -387,15 +559,13 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
         <span className="display-menu-chevron" aria-hidden="true" />
       </button>
       {open ? (
-        <div
-          className="lan-pairing-panel"
-          role="dialog"
-          aria-label="LAN transfer"
-        >
+        <div className="lan-pairing-panel" role="dialog" aria-label="LAN transfer">
           <div className="lan-pairing-header">
             <div>
               <h2 className="typo-title">LAN Transfer</h2>
-              <p className="typo-secondary">Send FBX files to another device on the same network.</p>
+              <p className="typo-secondary">
+                Same Wi-Fi. Create/show a pairing code on one device; the other taps Scan to join.
+              </p>
             </div>
             <button
               type="button"
@@ -408,113 +578,298 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
           </div>
 
           <div className="lan-pairing-body">
-            <div className={`lan-pairing-status is-${phase}${uiMode === "create" && busy ? " is-ready" : ""}`}>
+            <div className={`lan-pairing-status is-${phase}${busy ? " is-ready" : ""}`}>
               <span className="lan-pairing-status-badge">
-                {statusBadge}
+                {connected ? "Connected" : phase === "error" ? "Failed" : busy ? "Working" : "Idle"}
               </span>
               <p>{headline}</p>
               {status !== headline ? <p className="lan-pairing-status-detail">{status}</p> : null}
             </div>
 
-            {uiMode === "home" && phase !== "connected" ? (
-              <div className="lan-pairing-home">
+            {showTabsChrome ? (
+              <div className="lan-pairing-tabs" role="tablist" aria-label="Pairing method">
                 <button
                   type="button"
-                  className="primary-button lan-pairing-full"
-                  onClick={() => void createCode()}
-                  disabled={busy || httpAvailable === false}
-                >
-                  Create pairing code
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button lan-pairing-full"
+                  role="tab"
+                  aria-selected={methodTab === "code"}
+                  className={`lan-pairing-tab ${methodTab === "code" ? "is-active" : ""}`}
+                  disabled={busy && methodTab !== "code"}
                   onClick={() => {
-                    setUiMode("enter");
-                    setPhase("idle");
-                    setStatus("Scan the QR code or enter the pairing code.");
+                    if (busy) return;
+                    setMethodTab("code");
+                    if (screen !== "code-host") setScreen("tabs");
                   }}
-                  disabled={busy}
                 >
-                  Enter pairing code
+                  Pairing code
                 </button>
-                {httpAvailable === false ? (
-                  <p className="lan-pairing-hint">
-                    LAN pairing is unavailable because the app server is not reachable.
-                  </p>
-                ) : null}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={methodTab === "cloudless"}
+                  className={`lan-pairing-tab ${methodTab === "cloudless" ? "is-active" : ""}`}
+                  disabled={busy && methodTab !== "cloudless"}
+                  onClick={() => {
+                    if (busy) return;
+                    setMethodTab("cloudless");
+                    if (screen !== "cloudless-show") setScreen("tabs");
+                  }}
+                >
+                  Offline QR
+                </button>
               </div>
             ) : null}
 
-            {uiMode === "create" && phase !== "connected" ? (
-              <div className="lan-pairing-create">
-                <div className="lan-pairing-code-card">
-                  <strong className="lan-pairing-section-title typo-section">Pair another device</strong>
-                  <span className="lan-pairing-label typo-section">Pairing code</span>
-                  <strong className="lan-pairing-code typo-code">{pairingId}</strong>
-                  <LanPairingQrCode code={pairingId} />
-                  <p className="lan-pairing-hint typo-secondary">
-                    On the other device, open LAN Transfer and scan this QR code or enter the pairing code.
-                  </p>
-                  <div className="lan-pairing-actions">
-                    <button type="button" className="secondary-button" onClick={() => void copyPairingCode()}>
+            {!connected && methodTab === "code" && (screen === "tabs" || screen === "code-host") ? (
+              <div className="lan-pairing-tab-panel">
+                {screen === "code-host" ? (
+                  <div className="lan-pairing-code-card">
+                    <strong className="lan-pairing-section-title typo-section">Show this code</strong>
+                    <strong className="lan-pairing-code typo-code">{pairingId}</strong>
+                    <LanPairingQrCode code={pairingId} />
+                    <p className="lan-pairing-hint typo-secondary">
+                      On the other device, open LAN and tap Scan to join. They do not need to switch tabs.
+                    </p>
+                    <button
+                      type="button"
+                      className="secondary-button lan-pairing-full"
+                      onClick={() => void copyText(pairingId, "Pairing code copied.")}
+                    >
                       Copy code
                     </button>
                     <button
                       type="button"
-                      className="secondary-button"
-                      onClick={() => void createCode()}
+                      className="secondary-button lan-pairing-full"
+                      onClick={() => {
+                        resetToTabs("Not connected");
+                        void connectPeerjs("host", makeLanPairingId());
+                      }}
                     >
-                      Generate new code
+                      New code
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button lan-pairing-full"
+                      onClick={() => resetToTabs("Not connected")}
+                    >
+                      Cancel
                     </button>
                   </div>
+                ) : (
+                  <>
+                    <p className="lan-pairing-hint typo-secondary">
+                      Uses a short code (cloud signaling only helps you find each other; FBX stays P2P on the same Wi-Fi).
+                    </p>
+                    <button
+                      type="button"
+                      className="primary-button lan-pairing-full"
+                      disabled={busy}
+                      onClick={() => void connectPeerjs("host", makeLanPairingId())}
+                    >
+                      Create and show code
+                    </button>
+                    <label className="lan-pairing-field">
+                      <span className="lan-pairing-label">Or type a code (no camera)</span>
+                      <input
+                        className="lan-pairing-input"
+                        value={manualCode}
+                        onChange={(event) => setManualCode(event.target.value.toUpperCase())}
+                        disabled={busy}
+                        placeholder="e.g. 5F1AF5"
+                        spellCheck={false}
+                        autoCapitalize="characters"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="secondary-button lan-pairing-full"
+                      disabled={busy || !manualCode.trim()}
+                      onClick={() => void connectPeerjs("joiner", manualCode)}
+                    >
+                      Connect with typed code
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {!connected && methodTab === "cloudless" && ENABLE_OFFLINE_QR && (screen === "tabs" || screen === "cloudless-show") ? (
+              <div className="lan-pairing-tab-panel">
+                {screen === "cloudless-show" && localSignalPayload ? (
+                  <div className="lan-pairing-code-card">
+                    <strong className="lan-pairing-section-title typo-section">Show this QR</strong>
+                    <LanPairingQrCode payload={localSignalPayload} errorCorrectionLevel="L" />
+                    <p className="lan-pairing-hint typo-secondary">
+                      Usually the computer shows; the phone taps Scan to join. Do not scan this on this device.
+                    </p>
+                    <button
+                      type="button"
+                      className="secondary-button lan-pairing-full"
+                      onClick={() => void copyText(localSignalPayload, "QR payload copied.")}
+                    >
+                      Copy QR text
+                    </button>
+                    {awaitingRemoteKind === "answer" ? (
+                      <button
+                        type="button"
+                        className="primary-button lan-pairing-full"
+                        onClick={() => {
+                          setScreen("cloudless-scan-reply");
+                          setStatus("Scan the QR now shown on the other device.");
+                        }}
+                      >
+                        They scanned it — continue
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="secondary-button lan-pairing-full"
+                      onClick={() => resetToTabs("Not connected")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="lan-pairing-hint typo-secondary">
+                      No pairing service. Two QR exchanges. Usually the computer shows first; the phone only taps Scan to join.
+                    </p>
+                    <button
+                      type="button"
+                      className="primary-button lan-pairing-full"
+                      disabled={busy}
+                      onClick={() => void startCloudlessSession("host")}
+                    >
+                      Show a QR
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {!connected && ENABLE_OFFLINE_QR && screen === "cloudless-scan-reply" ? (
+              <div className="lan-pairing-signal-scan">
+                <strong className="lan-pairing-section-title typo-section">Scan their QR</strong>
+                <p className="lan-pairing-hint typo-secondary">
+                  Scan the new QR on the other device — not the one you showed earlier.
+                </p>
+                <LanPairingQrScanner
+                  mode="signal"
+                  onSignal={(payload) => {
+                    void submitRemoteSignalPayload(payload);
+                  }}
+                />
+                <label className="lan-pairing-field">
+                  <span className="lan-pairing-label">Or paste their QR text</span>
+                  <textarea
+                    className="lan-pairing-input lan-pairing-textarea"
+                    value={pastePayload}
+                    onChange={(event) => setPastePayload(event.target.value)}
+                    rows={3}
+                    spellCheck={false}
+                  />
+                </label>
+                <div className="lan-pairing-button-row">
+                  <button
+                    type="button"
+                    className="primary-button lan-pairing-full"
+                    disabled={!pastePayload.trim()}
+                    onClick={() => void submitRemoteSignalPayload(pastePayload)}
+                  >
+                    Submit
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button lan-pairing-full"
+                    onClick={() => {
+                      setScreen("cloudless-show");
+                      setStatus("Show this QR to the other device again.");
+                    }}
+                  >
+                    Back to my QR
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button lan-pairing-full"
+                    onClick={() => resetToTabs("Not connected")}
+                  >
+                    Cancel
+                  </button>
                 </div>
+              </div>
+            ) : null}
+
+            {!connected && ENABLE_OFFLINE_QR && screen === "cloudless-show-reply" && localSignalPayload ? (
+              <div className="lan-pairing-code-card">
+                <strong className="lan-pairing-section-title typo-section">Show this QR</strong>
+                <LanPairingQrCode payload={localSignalPayload} errorCorrectionLevel="L" />
+                <p className="lan-pairing-hint typo-secondary">
+                  Hold this up for the other device. Waiting for them to scan…
+                </p>
                 <button
                   type="button"
                   className="secondary-button lan-pairing-full"
-                  onClick={() => disconnect("Not connected")}
+                  onClick={() => void copyText(localSignalPayload, "QR payload copied.")}
+                >
+                  Copy QR text
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button lan-pairing-full"
+                  onClick={() => resetToTabs("Not connected")}
                 >
                   Cancel
                 </button>
               </div>
             ) : null}
 
-            {uiMode === "enter" && phase !== "connected" ? (
-              <div className="lan-pairing-enter">
+            {!connected && screen === "scan-join" ? (
+              <div className="lan-pairing-signal-scan">
+                <strong className="lan-pairing-section-title typo-section">Scan to join</strong>
+                <p className="lan-pairing-hint typo-secondary">
+                  {ENABLE_OFFLINE_QR
+                    ? "Point at the QR on the other device. Short codes and offline QRs are detected automatically."
+                    : "Scan the pairing-code QR on the other device, or type the short code below."}
+                </p>
                 <LanPairingQrScanner
-                  disabled={busy}
-                  onCode={(code) => {
-                    setStatus(`Scanned ${code}. Connecting...`);
-                    void connectWithCode(code);
+                  mode={ENABLE_OFFLINE_QR ? "auto" : "code"}
+                  onScan={(result) => {
+                    void handleUnifiedScan(result);
                   }}
                 />
                 <label className="lan-pairing-field">
-                  <span className="lan-pairing-label">Or enter the pairing code</span>
-                  <input
-                    className="lan-pairing-input"
-                    value={enterCode}
-                    onChange={(event) => setEnterCode(event.target.value.toUpperCase())}
-                    disabled={busy}
-                    placeholder="e.g. 5F1AF5"
+                  <span className="lan-pairing-label">
+                    {ENABLE_OFFLINE_QR
+                      ? "Or paste QR text / type a short code"
+                      : "Or type / paste a pairing code"}
+                  </span>
+                  <textarea
+                    className="lan-pairing-input lan-pairing-textarea"
+                    value={pastePayload}
+                    onChange={(event) => setPastePayload(event.target.value)}
+                    rows={3}
                     spellCheck={false}
-                    autoCapitalize="characters"
-                    aria-label="Enter pairing code"
                   />
                 </label>
-                <div className="lan-pairing-actions">
+                <div className="lan-pairing-button-row">
                   <button
                     type="button"
-                    className="primary-button"
-                    onClick={() => void connectWithCode()}
-                    disabled={busy || !enterCode.trim()}
+                    className="primary-button lan-pairing-full"
+                    disabled={!pastePayload.trim() || busy}
+                    onClick={() => {
+                      const classified = classifyLanQrPayload(pastePayload);
+                      if (!classified) {
+                        setStatus("Could not recognize that code or QR text.");
+                        return;
+                      }
+                      void handleUnifiedScan(classified);
+                    }}
                   >
-                    Connect
+                    Submit
                   </button>
                   <button
                     type="button"
-                    className="secondary-button"
-                    onClick={() => disconnect("Not connected")}
-                    disabled={busy}
+                    className="secondary-button lan-pairing-full"
+                    onClick={() => resetToTabs("Not connected")}
                   >
                     Back
                   </button>
@@ -522,7 +877,26 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
               </div>
             ) : null}
 
-            {phase === "connected" ? (
+            {!connected && screen !== "scan-join" && screen !== "cloudless-scan-reply" && screen !== "cloudless-show-reply" ? (
+              <div className="lan-pairing-join-footer">
+                <button
+                  type="button"
+                  className="secondary-button lan-pairing-full"
+                  disabled={busy && screen !== "tabs"}
+                  onClick={() => {
+                    if (busy && screen !== "tabs") return;
+                    setPastePayload("");
+                    setScreen("scan-join");
+                    setPhase("idle");
+                    setStatus("Scan the QR on the other device.");
+                  }}
+                >
+                  Scan to join
+                </button>
+              </div>
+            ) : null}
+
+            {connected ? (
               <div className="lan-pairing-connected">
                 <input
                   ref={sendFileInputRef}
@@ -535,13 +909,57 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
                     event.currentTarget.value = "";
                   }}
                 />
+                {canSendOpened ? (
+                  <div className="lan-pairing-send-opened">
+                    <strong className="lan-pairing-section-title typo-section">Send opened assets</strong>
+                    <p className="lan-pairing-hint typo-secondary">
+                      Includes current Tools modifier settings. Pose Warp target FBX must be reloaded on the other device.
+                    </p>
+                    <button
+                      type="button"
+                      className="secondary-button lan-pairing-full"
+                      disabled={transferActive || !canSendCharacter}
+                      title={canSendCharacter ? `Send character (${characterLabel})` : undefined}
+                      onClick={() => void sendOpenedSelection({ character: true, animation: false })}
+                    >
+                      <span className="lan-pairing-send-label">Send character</span>
+                      {canSendCharacter ? (
+                        <span className="lan-pairing-send-name">{characterLabel}</span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button lan-pairing-full"
+                      disabled={transferActive || !canSendAnimation}
+                      title={canSendAnimation ? `Send animation (${animationLabel})` : undefined}
+                      onClick={() => void sendOpenedSelection({ character: false, animation: true })}
+                    >
+                      <span className="lan-pairing-send-label">Send animation</span>
+                      {canSendAnimation ? (
+                        <span className="lan-pairing-send-name">{animationLabel}</span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-button lan-pairing-full"
+                      disabled={transferActive || !canSendCharacter || !canSendAnimation}
+                      onClick={() => void sendOpenedSelection({ character: true, animation: true })}
+                    >
+                      Send character + animation
+                    </button>
+                  </div>
+                ) : (
+                  <p className="lan-pairing-hint typo-secondary">
+                    Open a character or animation first, or pick an FBX from disk.
+                  </p>
+                )}
                 <button
                   type="button"
-                  className="primary-button lan-pairing-full"
+                  className="secondary-button lan-pairing-full"
                   disabled={transferActive}
                   onClick={() => sendFileInputRef.current?.click()}
                 >
-                  Send FBX
+                  Send FBX from disk
                 </button>
                 {transferActive ? (
                   <div className="lan-pairing-transfer">
@@ -571,7 +989,7 @@ export default function LanManualPairing({ onReceiveFile }: LanManualPairingProp
                 <button
                   type="button"
                   className="secondary-button lan-pairing-full"
-                  onClick={() => disconnect("Not connected")}
+                  onClick={() => resetToTabs("Not connected")}
                 >
                   Disconnect
                 </button>

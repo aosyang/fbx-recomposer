@@ -24,7 +24,18 @@ Import animation from another FBX and retarget compatible motion onto the loaded
 
 ### LAN Transfer
 
-Send an FBX between browsers on the same local network via pairing code or QR, without uploading to the cloud.
+Send an opened character/animation (including Tools modifier settings) or an FBX from disk between two browsers on the **same Wi-Fi**.
+
+- Both devices open the same public web app (for example GitHub Pages). **No local Vite/Node/Python server is required for pairing.**
+- Create/show a short **pairing code** (+ code QR). The other device taps **Scan to join** or types the code.
+- After pairing, FBX bytes go over a WebRTC DataChannel (prefer LAN). They are not uploaded to any signaling service.
+
+Offline dual-QR pairing is temporarily disabled while scan reliability is improved.
+
+Optional build-time config:
+
+- `VITE_LAN_SIGNALING_MODE=peerjs` (default) or `worker` (reserved for a future self-hosted endpoint)
+- `VITE_PEERJS_HOST` / `VITE_PEERJS_PORT` / `VITE_PEERJS_PATH` / `VITE_PEERJS_KEY` to point at your own PeerServer later
 
 ### FBX Export
 

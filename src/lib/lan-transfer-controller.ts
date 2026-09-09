@@ -1,3 +1,5 @@
+import type { MotionStackConfig } from "../components/AnimationFixStack";
+import { parseLanMotionStack } from "./lan-motion-stack.js";
 import {
   DEFAULT_LAN_CHUNK_SIZE,
   LAN_TRANSFER_PROTOCOL_VERSION,
@@ -12,10 +14,19 @@ import {
 
 const CONTROL_VERSION = 1;
 
+export type LanReceiveFileMeta = {
+  motionStack?: MotionStackConfig;
+};
+
+export type LanSendFileOptions = {
+  motionStack?: MotionStackConfig;
+};
+
 type OfferControl = {
   kind: "fbx-transfer-offer";
   version: typeof CONTROL_VERSION;
   offer: LanTransferOffer;
+  motionStack?: MotionStackConfig;
 };
 
 type CancelControl = {
@@ -49,7 +60,7 @@ export type LanFileTransferState =
 export type LanFileTransferCallbacks = {
   onSendProgress?: (progress: LanTransferProgress) => void;
   onReceiveProgress?: (progress: LanTransferProgress) => void;
-  onReceiveFile?: (file: File) => void | Promise<void>;
+  onReceiveFile?: (file: File, meta?: LanReceiveFileMeta) => void | Promise<void>;
   onState?: (state: LanFileTransferState) => void;
   onError?: (error: Error) => void;
 };
@@ -84,7 +95,13 @@ function parseControl(serialized: string): TransferControl {
     }
     // Constructor performs the full consistency validation.
     new LanTransferReassembler(offer);
-    return { kind: "fbx-transfer-offer", version: CONTROL_VERSION, offer };
+    const motionStack = parseLanMotionStack(record.motionStack);
+    return {
+      kind: "fbx-transfer-offer",
+      version: CONTROL_VERSION,
+      offer,
+      ...(motionStack ? { motionStack } : {}),
+    };
   }
 
   if (record.kind === "fbx-transfer-cancel") {
@@ -135,6 +152,7 @@ function isAbortError(error: unknown): boolean {
 
 export class LanFileTransferController {
   private receiver: LanTransferReassembler | null = null;
+  private receiverMotionStack: MotionStackConfig | undefined;
   private disposed = false;
   private readonly chunkSize: number;
   private readonly maxBufferedAmount: number;
@@ -154,12 +172,13 @@ export class LanFileTransferController {
     channel.addEventListener("error", this.onChannelError);
   }
 
-  async send(file: File, signal?: AbortSignal): Promise<void> {
+  async send(file: File, signal?: AbortSignal, options: LanSendFileOptions = {}): Promise<void> {
     this.ensureUsable();
     if (signal?.aborted) throw abortError(signal);
 
     const transferId = createTransferId();
     const offer = createLanTransferOffer(file, transferId, this.chunkSize);
+    const motionStack = options.motionStack;
     this.callbacks.onState?.({ phase: "sending", fileName: offer.name, transferId });
 
     try {
@@ -167,6 +186,7 @@ export class LanFileTransferController {
         kind: "fbx-transfer-offer",
         version: CONTROL_VERSION,
         offer,
+        ...(motionStack ? { motionStack } : {}),
       }));
 
       let sentBytes = 0;
@@ -236,6 +256,7 @@ export class LanFileTransferController {
     if (this.disposed) return;
     this.disposed = true;
     this.receiver = null;
+    this.receiverMotionStack = undefined;
     this.receivedAcks.clear();
     for (const [transferId, pending] of this.pendingAcks) {
       pending.cleanup();
@@ -361,6 +382,7 @@ export class LanFileTransferController {
       if (this.receiver?.offer.transferId === control.transferId) {
         const fileName = this.receiver.offer.name;
         this.receiver = null;
+        this.receiverMotionStack = undefined;
         this.callbacks.onState?.({
           phase: "cancelled",
           fileName,
@@ -378,6 +400,7 @@ export class LanFileTransferController {
     }
 
     this.receiver = new LanTransferReassembler(control.offer);
+    this.receiverMotionStack = control.motionStack;
     this.callbacks.onState?.({
       phase: "receiving",
       fileName: control.offer.name,
@@ -415,6 +438,7 @@ export class LanFileTransferController {
       }
     } catch (error) {
       this.receiver = null;
+      this.receiverMotionStack = undefined;
       this.sendCancel(receiver.offer.transferId, "Receiver rejected transfer data");
       this.callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
     }
@@ -423,6 +447,8 @@ export class LanFileTransferController {
   private async finishReceive(receiver: LanTransferReassembler): Promise<void> {
     if (this.receiver !== receiver) return;
     this.receiver = null;
+    const motionStack = this.receiverMotionStack;
+    this.receiverMotionStack = undefined;
 
     const blob = receiver.toBlob();
     const file = new File([blob], receiver.offer.name, {
@@ -435,7 +461,10 @@ export class LanFileTransferController {
     this.sendComplete(receiver.offer.transferId);
 
     try {
-      await this.callbacks.onReceiveFile?.(file);
+      await this.callbacks.onReceiveFile?.(
+        file,
+        motionStack ? { motionStack } : undefined,
+      );
       this.callbacks.onState?.({
         phase: "completed",
         fileName: receiver.offer.name,
@@ -451,6 +480,7 @@ export class LanFileTransferController {
     const fileName = this.receiver?.offer.name;
     const transferId = this.receiver?.offer.transferId;
     this.receiver = null;
+    this.receiverMotionStack = undefined;
     this.receivedAcks.clear();
     for (const [pendingId, pending] of this.pendingAcks) {
       pending.cleanup();

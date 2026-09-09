@@ -2144,9 +2144,10 @@ select {
   top: calc(100% + 0.5rem);
   left: 0;
   right: auto;
-  display: grid;
-  width: min(24rem, calc(100vw - 24px));
-  max-height: min(78vh, 40rem);
+  display: flex;
+  flex-direction: column;
+  width: min(28rem, calc(100vw - 24px));
+  max-height: min(82vh, 44rem);
   overflow: hidden;
   border: 1px solid #3b4249;
   border-radius: 0.8rem;
@@ -2156,6 +2157,7 @@ select {
 
 .lan-pairing-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -2201,9 +2203,14 @@ select {
 
 .lan-pairing-body {
   display: grid;
+  flex: 1 1 auto;
   gap: 10px;
+  min-height: 0;
   padding: 12px 14px 14px;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .lan-pairing-field {
@@ -2226,17 +2233,58 @@ select {
   align-items: center;
 }
 
-.lan-pairing-actions > button,
-.lan-pairing-full {
+.lan-pairing-actions > button {
   flex: 1 1 auto;
+}
+
+.lan-pairing-full {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
 }
 
 .lan-pairing-panel .primary-button,
 .lan-pairing-panel .secondary-button {
   min-height: var(--control-height);
-  padding: 0 14px;
+  padding: 10px 14px;
   font-size: var(--type-control);
   font-weight: var(--weight-emphasis);
+}
+
+.lan-pairing-send-opened {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.lan-pairing-send-opened .lan-pairing-full {
+  justify-content: flex-start;
+  gap: 6px;
+  text-align: left;
+}
+
+.lan-pairing-send-label {
+  flex: 0 0 auto;
+}
+
+.lan-pairing-send-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  opacity: 0.72;
+  font-weight: var(--weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lan-pairing-input {
@@ -2373,15 +2421,74 @@ select {
 .lan-pairing-home,
 .lan-pairing-create,
 .lan-pairing-enter,
-.lan-pairing-connected {
+.lan-pairing-connected,
+.lan-pairing-qr-fallback {
   display: grid;
   gap: 10px;
 }
 
-.lan-pairing-code-card {
+.lan-pairing-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 0.65rem;
+  background: #12161a;
+}
+
+.lan-pairing-tab {
+  min-height: var(--control-height);
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0.5rem;
+  color: #a8b0b8;
+  background: transparent;
+  font-size: var(--type-secondary);
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+}
+
+.lan-pairing-tab.is-active {
+  color: #f3f5f7;
+  background: #2a3138;
+}
+
+.lan-pairing-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.lan-pairing-tab-panel,
+.lan-pairing-join-footer,
+.lan-pairing-signal-scan {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.lan-pairing-button-row {
   display: grid;
   gap: 8px;
-  padding: 14px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.lan-pairing-textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.lan-pairing-code-card {
+  display: grid;
+  justify-items: stretch;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
   border: 1px solid #333941;
   border-radius: 10px;
   background: #161a1e;
@@ -2408,14 +2515,31 @@ select {
   line-height: var(--leading-tight);
 }
 
+.lan-pairing-qr-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 8px 0 0;
+  overflow: hidden;
+}
+
 .lan-pairing-qr {
   display: block;
-  width: 196px;
-  height: 196px;
-  margin: 4px auto 0;
-  padding: 10px;
-  border-radius: 10px;
+  box-sizing: content-box;
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: none;
+  margin: 0 auto;
+  padding: 0;
+  border: 8px solid #fff;
+  border-radius: 0;
   background: #fff;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 .lan-pairing-qr.is-loading {
